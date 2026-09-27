@@ -4,15 +4,18 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // Supabase Client — يُعاد بناؤه فور تغيير بيانات الاتصال
 // ──────────────────────────────────────────────────────────────────────────────
 
+const DEFAULT_SUPABASE_URL = 'https://aeuavoqhrhzsxblrddlc.supabase.co';
+const DEFAULT_SUPABASE_KEY = '[REDACTED-SERVICE_ROLE_KEY]';
+
 function getSupabaseCredentials(): { url: string; key: string } {
   const url =
     (import.meta as any).env?.VITE_SUPABASE_URL ||
     localStorage.getItem('rawdah_cloud_supabase_url') ||
-    '';
+    DEFAULT_SUPABASE_URL;
   const key =
     (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
     localStorage.getItem('rawdah_cloud_supabase_key') ||
-    '';
+    DEFAULT_SUPABASE_KEY;
   return { url, key };
 }
 
