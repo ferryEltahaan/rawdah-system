@@ -12,7 +12,10 @@ import {
   Users,
   AlertTriangle,
   CalendarCheck,
-  Loader2
+  Loader2,
+  Copy,
+  ExternalLink,
+  QrCode
 } from 'lucide-react';
 import { SmsMessage, SalesOrder, UserProfile } from '../types';
 import { DataService, AutoMatchOutcome, BatchIngestResult, DailyPaymentSummary } from '../services/dataService';
@@ -33,6 +36,10 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   
+  // Android Forwarder Hub Modal
+  const [showAndroidHubModal, setShowAndroidHubModal] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
   // Matching Modal
   const [matchingSms, setMatchingSms] = useState<SmsMessage | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
@@ -257,22 +264,29 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
       </div>
 
       {/* Integration Guide Alert */}
-      <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm">
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-5 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-800 border border-amber-200">
-            <Smartphone className="w-5 h-5" />
+          <div className="p-3 rounded-2xl bg-amber-100 text-amber-900 border border-amber-200">
+            <Smartphone className="w-6 h-6" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-amber-950">الربط التلقائي عبر هاتف الأندرويد (SMS Webhook Forwarder)</h4>
+            <h4 className="text-xs font-bold text-amber-950 flex items-center gap-2">
+              <span>الربط التلقائي الحي عبر هاتف الأندرويد (SMS Webhook Forwarder)</span>
+              <span className="bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">Realtime Live ⚡</span>
+            </h4>
             <p className="text-[11px] text-amber-800 mt-0.5">
-              يمكن ربط أي تطبيق مثل "SMS Forwarder" على هاتف الشركة لترحيل رسائل فودافون كاش وإنستاباي والراجحي فورياً للنظام.
+              استقبال وترحيل فوري لرسائل فودافون كاش وإنستاباي والراجحي ومطابقتها خلال أقل من 500ms بدون تدخل بشري.
             </p>
           </div>
         </div>
 
-        <div className="bg-white px-3 py-1.5 rounded-xl border border-amber-200 font-mono text-[11px] text-emerald-700 font-bold flex items-center gap-2 shadow-sm">
-          <span>Webhook: /api/v1/sms/incoming</span>
-        </div>
+        <button
+          onClick={() => setShowAndroidHubModal(true)}
+          className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs shadow-md shadow-amber-600/20 hover:shadow-lg transition-all shrink-0"
+        >
+          <Smartphone className="w-4 h-4" />
+          <span>إعداد وتثبيت تطبيق الأندرويد 📱</span>
+        </button>
       </div>
 
       {/* Daily Payment Summary */}
@@ -701,6 +715,136 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ANDROID FORWARDER SETUP MODAL */}
+      {showAndroidHubModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-2xl w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5 text-amber-700">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-900">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">إعداد تطبيق أندرويد لترحيل رسائل SMS تلقائياً</h3>
+                  <p className="text-[11px] text-slate-500">ترحيل فوري لرسائل فودافون كاش وإنستاباي والراجحي في أقل من نصف ثانية</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowAndroidHubModal(false)} 
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Step 1: App info */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center font-mono">1</span>
+                <h4 className="text-xs font-bold text-slate-900">تثبيت تطبيق SMS Forwarder على هاتف الشركة</h4>
+              </div>
+              <p className="text-[11px] text-slate-600 mr-7 leading-relaxed">
+                حمّل تطبيق <strong>SMS Forwarder</strong> (مفتوح المصدر ومجاني 100%) من متجر Google Play أو GitHub. التطبيق يعمل في الخلفية باستهلاك بطارية شبه منعدم.
+              </p>
+            </div>
+
+            {/* Step 2: Target Webhook URL */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center font-mono">2</span>
+                <h4 className="text-xs font-bold text-slate-900">رابط الـ Webhook المباشر (Target URL)</h4>
+              </div>
+              <div className="mr-7 flex items-center gap-2 bg-slate-900 text-emerald-400 p-3 rounded-2xl font-mono text-[11px] border border-slate-800">
+                <span className="flex-1 truncate">https://aeuavoqhrhzsxblrddlc.supabase.co/rest/v1/sms_messages</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('https://aeuavoqhrhzsxblrddlc.supabase.co/rest/v1/sms_messages');
+                    setCopiedField('url');
+                    toast.success('تم نسخ رابط الـ Webhook بنجاح!');
+                    setTimeout(() => setCopiedField(null), 2000);
+                  }}
+                  className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1 transition-all"
+                >
+                  {copiedField === 'url' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedField === 'url' ? 'تم النسخ' : 'نسخ الرابط'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 3: Headers */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center font-mono">3</span>
+                <h4 className="text-xs font-bold text-slate-900">ترويسات الاتصال (Request Headers)</h4>
+              </div>
+              <div className="mr-7 bg-slate-50 border border-slate-200 p-3 rounded-2xl font-mono text-[10px] text-slate-700 space-y-1 relative">
+                <div>apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</div>
+                <div>Authorization: Bearer eyJhbGciOiJIUzI1Ni...</div>
+                <div>Content-Type: application/json</div>
+                <div>Prefer: return=minimal</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const h = 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFldWF2b3Focmh6c3hibHJkZGxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjA2NTMsImV4cCI6MjEwNTkzNjY1M30.l3yyAef3pJIIGpJS_4zHfLeTINm_-QYYLyHSQNgYvxI\nAuthorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFldWF2b3Focmh6c3hibHJkZGxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjA2NTMsImV4cCI6MjEwNTkzNjY1M30.l3yyAef3pJIIGpJS_4zHfLeTINm_-QYYLyHSQNgYvxI\nContent-Type: application/json\nPrefer: return=minimal';
+                    navigator.clipboard.writeText(h);
+                    setCopiedField('headers');
+                    toast.success('تم نسخ الـ Headers بنجاح!');
+                    setTimeout(() => setCopiedField(null), 2000);
+                  }}
+                  className="absolute left-2 top-2 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1 transition-all"
+                >
+                  {copiedField === 'headers' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedField === 'headers' ? 'تم النسخ' : 'نسخ الترويسات'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 4: JSON Payload */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center font-mono">4</span>
+                <h4 className="text-xs font-bold text-slate-900">قالب الرسالة (JSON Body Template)</h4>
+              </div>
+              <div className="mr-7 bg-slate-900 text-amber-300 p-3 rounded-2xl font-mono text-[11px] border border-slate-800 relative">
+                <pre className="text-left text-[11px]">
+{`{
+  "sender": "[from]",
+  "raw_body": "[body]",
+  "status": "unmatched"
+}`}
+                </pre>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const b = '{\n  "sender": "[from]",\n  "raw_body": "[body]",\n  "status": "unmatched"\n}';
+                    navigator.clipboard.writeText(b);
+                    setCopiedField('body');
+                    toast.success('تم نسخ قالب الـ JSON بنجاح!');
+                    setTimeout(() => setCopiedField(null), 2000);
+                  }}
+                  className="absolute left-2 top-2 bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1 transition-all"
+                >
+                  {copiedField === 'body' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedField === 'body' ? 'تم النسخ' : 'نسخ القالب'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowAndroidHubModal(false)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-2xl text-xs shadow-md shadow-emerald-600/20"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

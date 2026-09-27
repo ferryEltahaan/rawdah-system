@@ -39,11 +39,16 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'today' | 'tomorrow' | 'unpaid' | 'unsent'>('all');
   
   // Create Order Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCustomerId, setNewCustomerId] = useState('');
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+  const tomorrowObj = new Date();
+  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+  const tomorrowStr = tomorrowObj.toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+
   const [newTargetDate, setNewTargetDate] = useState(today);
   const [newTargetHour, setNewTargetHour] = useState('00');
   const [newTargetMin, setNewTargetMin] = useState('00');
@@ -64,6 +69,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   // WhatsApp Share Modal
   const [whatsAppModalOrder, setWhatsAppModalOrder] = useState<SalesOrder | null>(null);
+  const [whatsAppTemplate, setWhatsAppTemplate] = useState<'confirm' | 'payment_reminder' | 'visit_reminder'>('confirm');
   const [markAsSent, setMarkAsSent] = useState(true);
 
   const refreshData = () => {
@@ -147,9 +153,41 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     refreshData();
   };
 
-  const buildWhatsAppMessage = (order: SalesOrder) => {
+  const buildWhatsAppMessage = (order: SalesOrder, template: 'confirm' | 'payment_reminder' | 'visit_reminder' = whatsAppTemplate) => {
     const isFullyPaid = order.paidAmount >= order.totalAmount && order.totalAmount > 0;
     const sym = currencySymbol(getOrderCurrency(order));
+    const company = DataService.getCompanySettings();
+    const accounts = DataService.getFinancialAccounts().filter(a => a.isActive);
+
+    if (template === 'payment_reminder') {
+      const accountsList = accounts.map(a => `• ${a.accountName} (${a.accountNumber})`).join('\n') || 'يرجى التواصل لمعرفة الحساب البنكي';
+      return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
+نود تذكيركم بمتابعة سداد حجز تصريح الروضة الشريفة:
+
+• رقم الطلب: #${order.orderNumber}
+• الموعد: ${order.targetDate} (الساعة: ${order.targetTime})
+• إجمالي المبلغ: ${order.totalAmount} ${sym}
+• المبلغ المتبقي: ${order.remainingAmount} ${sym}
+
+طرق الدفع المتاحة:
+${accountsList}
+
+فور التحويل سيتم تأكيد السداد وإصدار التصريح فوراً. شكراً لثقتكم.`;
+    }
+
+    if (template === 'visit_reminder') {
+      return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
+نذكركم بموعد زيارة الروضة الشريفة المباركة:
+
+• تاريخ الزيارة: ${order.targetDate}
+• وقت الفترة: ${order.targetTime}
+• عدد التصاريح: ${order.permitsCount}
+
+يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.
+تقبل الله طاعتكم وزيارتكم 🕌✨`;
+    }
+
+    // Default 'confirm' template
     return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
 نود إبلاغكم بأنه تم تجهيز طلب تصريح زيارة الروضة الشريفة بنجاح 🕌✨
 
@@ -164,7 +202,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   const handleOpenWhatsApp = (order: SalesOrder) => {
     window.open(
-      `https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(order))}`,
+      `https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(order, whatsAppTemplate))}`,
       '_blank',
       'noopener'
     );
@@ -244,11 +282,21 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     const matchesType = filterType === 'all' || order.orderType === filterType;
     const matchesArchive = viewMode === 'archived' ? !!order.isArchived : !order.isArchived;
 
-    return matchesSearch && matchesStatus && matchesType && matchesArchive;
+    let matchesQuick = true;
+    if (quickFilter === 'today') matchesQuick = order.targetDate === today;
+    if (quickFilter === 'tomorrow') matchesQuick = order.targetDate === tomorrowStr;
+    if (quickFilter === 'unpaid') matchesQuick = order.paidAmount < order.totalAmount;
+    if (quickFilter === 'unsent') matchesQuick = order.deliveryStatus !== 'sent';
+
+    return matchesSearch && matchesStatus && matchesType && matchesArchive && matchesQuick;
   });
 
   const activeOrdersCount = orders.filter(o => !o.isArchived).length;
   const archivedOrdersCount = orders.filter(o => o.isArchived).length;
+  const todayOrdersCount = orders.filter(o => !o.isArchived && o.targetDate === today).length;
+  const tomorrowOrdersCount = orders.filter(o => !o.isArchived && o.targetDate === tomorrowStr).length;
+  const unpaidOrdersCount = orders.filter(o => !o.isArchived && o.paidAmount < o.totalAmount).length;
+  const unsentOrdersCount = orders.filter(o => !o.isArchived && o.deliveryStatus !== 'sent').length;
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -372,6 +420,66 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           <span>تصدير CSV</span>
         </button>
       </div>
+
+      {/* Quick Filter Pills */}
+      {viewMode === 'active' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setQuickFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              quickFilter === 'all'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            كل الطلبات النشطة ({activeOrdersCount})
+          </button>
+          <button
+            onClick={() => setQuickFilter('today')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              quickFilter === 'today'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                : 'bg-emerald-50/70 text-emerald-800 border-emerald-200 hover:bg-emerald-100/70'
+            }`}
+          >
+            <span>📅 طلبات اليوم</span>
+            <span className="bg-emerald-800 text-white px-1.5 py-0.5 rounded-full text-[10px]">{todayOrdersCount}</span>
+          </button>
+          <button
+            onClick={() => setQuickFilter('tomorrow')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              quickFilter === 'tomorrow'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                : 'bg-blue-50/70 text-blue-800 border-blue-200 hover:bg-blue-100/70'
+            }`}
+          >
+            <span>🌅 طلبات الغد</span>
+            <span className="bg-blue-800 text-white px-1.5 py-0.5 rounded-full text-[10px]">{tomorrowOrdersCount}</span>
+          </button>
+          <button
+            onClick={() => setQuickFilter('unpaid')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              quickFilter === 'unpaid'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                : 'bg-amber-50/70 text-amber-800 border-amber-200 hover:bg-amber-100/70'
+            }`}
+          >
+            <span>💳 بانتظار السداد</span>
+            <span className="bg-amber-800 text-white px-1.5 py-0.5 rounded-full text-[10px]">{unpaidOrdersCount}</span>
+          </button>
+          <button
+            onClick={() => setQuickFilter('unsent')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              quickFilter === 'unsent'
+                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                : 'bg-purple-50/70 text-purple-800 border-purple-200 hover:bg-purple-100/70'
+            }`}
+          >
+            <span>💬 بانتظار الإرسال</span>
+            <span className="bg-purple-800 text-white px-1.5 py-0.5 rounded-full text-[10px]">{unsentOrdersCount}</span>
+          </button>
+        </div>
+      )}
 
       {/* Orders Table */}
       <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
@@ -828,8 +936,45 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
               <button onClick={() => setWhatsAppModalOrder(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
 
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 space-y-1.5 whitespace-pre-wrap leading-relaxed">
-              {buildWhatsAppMessage(whatsAppModalOrder)}
+            {/* Template Selector */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setWhatsAppTemplate('confirm')}
+                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
+                  whatsAppTemplate === 'confirm'
+                    ? 'bg-white text-emerald-800 shadow-sm border border-emerald-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🕌 تأكيد الحجز
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhatsAppTemplate('payment_reminder')}
+                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
+                  whatsAppTemplate === 'payment_reminder'
+                    ? 'bg-white text-amber-800 shadow-sm border border-amber-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                💳 تذكير سداد
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhatsAppTemplate('visit_reminder')}
+                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
+                  whatsAppTemplate === 'visit_reminder'
+                    ? 'bg-white text-blue-800 shadow-sm border border-blue-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                ⏰ تذكير موعد
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 space-y-1.5 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+              {buildWhatsAppMessage(whatsAppModalOrder, whatsAppTemplate)}
             </div>
 
             <label className="flex items-center gap-2 bg-emerald-50/70 border border-emerald-200 rounded-2xl px-3.5 py-2.5 cursor-pointer select-none">

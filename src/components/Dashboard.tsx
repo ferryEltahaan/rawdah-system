@@ -191,6 +191,82 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate })
 
       </div>
 
+      {/* Quick Start Onboarding Guide for New Setup / Operations */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 border border-slate-700/60 rounded-3xl p-6 shadow-xl text-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              <Zap className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-white">دليل التشغيل السريع وخط سير النظام</h3>
+              <p className="text-[11px] text-slate-300">أربع خطوات أساسية لتشغيل دورة العمل الحية اليومية بكفاءة تامة</p>
+            </div>
+          </div>
+          <span className="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full self-start sm:self-auto">
+            جاهزية النظام: {((permits.length > 0 ? 1 : 0) + (orders.length > 0 ? 1 : 0) + (customers.length > 0 ? 1 : 0) + 1) * 25}%
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Step 1: Accounts */}
+          <div 
+            onClick={() => onNavigate('accounts')}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 cursor-pointer transition-all space-y-2 group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-400 font-mono">01</span>
+              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">الخزائن</span>
+            </div>
+            <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">تهيئة المحافظ والبنوك</h4>
+            <p className="text-[11px] text-slate-300 leading-relaxed">إضافة أرقام فودافون كاش، إنستاباي، وحسابات الراجحي لاستقبال التحويلات.</p>
+          </div>
+
+          {/* Step 2: Permits */}
+          <div 
+            onClick={() => onNavigate('permits')}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 cursor-pointer transition-all space-y-2 group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-400 font-mono">02</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${permits.length > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-slate-400'}`}>
+                {permits.length > 0 ? `✓ ${permits.length} تصريح` : 'مطلوب'}
+              </span>
+            </div>
+            <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">رفع مخزون الفترات</h4>
+            <p className="text-[11px] text-slate-300 leading-relaxed">رفع وتغذية تصاريح الروضة لفترات اليوم الـ 24 ساعة (رجال / نساء).</p>
+          </div>
+
+          {/* Step 3: Orders */}
+          <div 
+            onClick={() => onNavigate('orders')}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 cursor-pointer transition-all space-y-2 group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-400 font-mono">03</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${orders.length > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-slate-400'}`}>
+                {orders.length > 0 ? `✓ ${orders.length} طلب` : 'مطلوب'}
+              </span>
+            </div>
+            <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">إنشاء حجوزات المعتمرين</h4>
+            <p className="text-[11px] text-slate-300 leading-relaxed">تسجيل بيانات المعتمر، اختيار الفترة، وحجز وقفل التصاريح فوراً.</p>
+          </div>
+
+          {/* Step 4: SMS Forwarder */}
+          <div 
+            onClick={() => onNavigate('sms')}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/50 cursor-pointer transition-all space-y-2 group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-400 font-mono">04</span>
+              <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">محرك آلي</span>
+            </div>
+            <h4 className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors">مطابقة السداد والترحيل</h4>
+            <p className="text-[11px] text-slate-300 leading-relaxed">استقبال رسائل SMS ومطابقتها آلياً لتأكيد الحجز وتغذية الخزائن.</p>
+          </div>
+        </div>
+      </div>
+
       {/* Quick Visual Slots Preview & Live Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
