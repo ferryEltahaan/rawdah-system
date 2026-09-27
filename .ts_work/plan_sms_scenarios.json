@@ -1,0 +1,52 @@
+{
+  "projectId": "bb661132-81eb-42dc-ab97-765ad143aebf",
+  "type": "frontend",
+  "name": "05 - SMS Inbox: Batch SMS modal opens with textarea and submit button",
+  "description": "Verifies the batch SMS modal opens correctly and allows entering text and submitting for matching",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Log in with username 'admin' and password 'admin123'"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify dashboard is displayed with statistics cards"
+    },
+    {
+      "type": "action",
+      "description": "Click on the SMS inbox sidebar link (رسائل الـ SMS والسداد)"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify SMS inbox page is shown with a header containing 'رسائل الـ SMS'"
+    },
+    {
+      "type": "action",
+      "description": "Click the button labeled 'استقبال دفعي لعدة رسائل' to open the batch SMS modal"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify a modal dialog appears with a textarea field for entering SMS messages"
+    },
+    {
+      "type": "action",
+      "description": "Type the following text into the textarea: 'Vodafone Cash: استلام مبلغ: 300.00 جنيه من 01001234501 رقم العملية: VF48200001'"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the submit button 'استقبال ومطابقة آلية' is now enabled"
+    },
+    {
+      "type": "action",
+      "description": "Click the submit button 'استقبال ومطابقة آلية'"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the modal closes after submission"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify at least one SMS message row appears in the inbox list"
+    }
+  ]
+}

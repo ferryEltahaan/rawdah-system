@@ -1,0 +1,51 @@
+{
+  "type": "frontend",
+  "name": "02 - Admin login succeeds and dashboard loads",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Navigate to the app URL"
+    },
+    {
+      "type": "assertion",
+      "description": "The login form is visible"
+    },
+    {
+      "type": "action",
+      "description": "Fill the username field with 'admin'"
+    },
+    {
+      "type": "action",
+      "description": "Fill the password field with 'admin123'"
+    },
+    {
+      "type": "action",
+      "description": "Click the submit / login button"
+    },
+    {
+      "type": "assertion",
+      "description": "Wait: the sidebar navigation menu appears with items in Arabic"
+    },
+    {
+      "type": "assertion",
+      "description": "The sidebar item 'لوحة المؤشرات العامة' (dashboard) is visible"
+    },
+    {
+      "type": "assertion",
+      "description": "The sidebar item 'مخزون الفترات (24 ساعة)' (permits inventory) is visible"
+    },
+    {
+      "type": "assertion",
+      "description": "The sidebar item 'فريق العمل والصلاحيات' (employees) is visible — admin only"
+    },
+    {
+      "type": "assertion",
+      "description": "The sidebar item 'إعدادات وبيانات المؤسسة' (settings) is visible — admin only"
+    },
+    {
+      "type": "assertion",
+      "description": "The dashboard view is rendered (page direction is RTL, contains Arabic text)"
+    }
+  ],
+  "projectId": "bb661132-81eb-42dc-ab97-765ad143aebf"
+}
