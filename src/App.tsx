@@ -107,6 +107,18 @@ const AppContent: React.FC = () => {
       }
     };
 
+    const cleanupRealtime = DataService.initRealtimeListener();
+
+    const handleIncomingSms = (e: any) => {
+      const outcome = e.detail;
+      if (outcome?.matched) {
+        toast.success(`⚡ تم استقبال سداد فوري من هاتف الشركة للطلب #${outcome.orderNumber} بمبلغ ${outcome.amount ?? 0}!`);
+      } else {
+        toast.info('📱 تم استقبال رسالة تحويل بنكي جديدة عبر هاتف الشركة في صندوق الرسائل.');
+      }
+    };
+
+    window.addEventListener('rawdah_sms_incoming', handleIncomingSms);
     window.addEventListener('rawdah_storage_update', handleStorageUpdate);
     // عند تحديث إعدادات السحابة يُعاد التزامن كاملاً
     const handleCloudUpdate = () => {
@@ -115,6 +127,8 @@ const AppContent: React.FC = () => {
     window.addEventListener('rawdah_cloud_updated', handleCloudUpdate);
 
     return () => {
+      cleanupRealtime();
+      window.removeEventListener('rawdah_sms_incoming', handleIncomingSms);
       window.removeEventListener('rawdah_storage_update', handleStorageUpdate);
       window.removeEventListener('rawdah_cloud_updated', handleCloudUpdate);
     };

@@ -570,6 +570,53 @@ export class DataService {
     }
   }
 
+  // --- Realtime Webhook Listener (استقبال رسائل أندرويد اللحظية) ---
+  static initRealtimeListener(): () => void {
+    if (!getIsConfigured() || !getSupabase()) return () => {};
+    const sb = getSupabase()!;
+
+    const channel = sb
+      .channel('public:sms_messages_stream')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sms_messages' },
+        async (payload) => {
+          const newRow = payload.new as any;
+          if (!newRow || !newRow.id) return;
+          console.log('⚡ SMS Realtime received from phone forwarder:', newRow);
+
+          const currentSms = DataService.getSmsMessages();
+          if (!currentSms.some(s => s.id === newRow.id)) {
+            const parsed = DataService.parseSmsText(newRow.raw_body || '', newRow.sender || 'SMS');
+            const mappedSms: SmsMessage = {
+              id: newRow.id,
+              sender: newRow.sender || 'SMS',
+              rawBody: newRow.raw_body || '',
+              parsedAmount: newRow.parsed_amount ?? parsed.parsedAmount,
+              parsedReferenceId: newRow.parsed_reference_id ?? parsed.parsedReferenceId,
+              parsedAccountNumber: newRow.parsed_account_number ?? parsed.parsedAccountNumber,
+              parsedProvider: newRow.parsed_provider ?? parsed.parsedProvider,
+              status: newRow.status || 'unmatched',
+              matchedOrderId: newRow.matched_order_id,
+              matchedOrderNumber: newRow.matched_order_number,
+              receivedAt: newRow.received_at || new Date().toISOString(),
+            };
+            currentSms.unshift(mappedSms);
+            saveToStorage(STORAGE_KEYS.SMS, currentSms);
+
+            const outcome = await DataService.autoMatchSms(mappedSms.id);
+            window.dispatchEvent(new CustomEvent('rawdah_sms_incoming', { detail: outcome }));
+            window.dispatchEvent(new Event('rawdah_storage_update'));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }
+
   // --- Company Settings ---
   static getCompanySettings(): CompanySettings {
     return loadFromStorage(STORAGE_KEYS.SETTINGS, initialCompanySettings);
