@@ -1,0 +1,75 @@
+{
+  "type": "frontend",
+  "name": "03 - Admin can navigate all sidebar screens",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Navigate to the app URL"
+    },
+    {
+      "type": "action",
+      "description": "Log in as admin: fill username 'admin', password 'admin123', and click the login button"
+    },
+    {
+      "type": "assertion",
+      "description": "The dashboard loads and the sidebar is visible"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item 'طلبات الطلب' — actually click the sidebar item labeled 'طلبات البيع والحجوزات' (orders)"
+    },
+    {
+      "type": "assertion",
+      "description": "The orders management screen is visible (contains the orders header and an empty-state or orders list in Arabic)"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'العملاء وحسابات الواتساب' (customers)"
+    },
+    {
+      "type": "assertion",
+      "description": "The customers CRM screen is visible (contains a search field with placeholder mentioning الواتساب and the button 'إضافة عميل جديد')"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'رسائل الـ SMS والسداد' (SMS)"
+    },
+    {
+      "type": "assertion",
+      "description": "The SMS inbox screen is visible (contains a filter dropdown with option 'غير مطابقة (بانتظار السداد)')"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'المحافظ والحسابات البنكية' (accounts)"
+    },
+    {
+      "type": "assertion",
+      "description": "The financial accounts screen is visible"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'فريق العمل والصلاحيات' (employees)"
+    },
+    {
+      "type": "assertion",
+      "description": "The employees and roles screen is visible"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'إعدادات وبيانات المؤسسة' (settings)"
+    },
+    {
+      "type": "assertion",
+      "description": "The company settings screen is visible (contains the section 'إدارة البيانات والتجربة الحية' with buttons 'توليد تجربة حية شاملة' and 'مسح جميع البيانات نهائياً')"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'سجل العمليات والتدقيق' (audit)"
+    },
+    {
+      "type": "assertion",
+      "description": "The audit log viewer screen is visible (contains a search field and an action-type filter dropdown)"
+    }
+  ],
+  "projectId": "bb661132-81eb-42dc-ab97-765ad143aebf"
+}

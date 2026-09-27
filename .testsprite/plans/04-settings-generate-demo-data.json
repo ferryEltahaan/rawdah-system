@@ -1,0 +1,67 @@
+{
+  "type": "frontend",
+  "name": "04 - Settings: generate live demo dataset populates the system",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Navigate to the app URL"
+    },
+    {
+      "type": "action",
+      "description": "Log in as admin: fill username 'admin', password 'admin123', and click the login button"
+    },
+    {
+      "type": "assertion",
+      "description": "The dashboard loads"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'إعدادات وبيانات المؤسسة' (settings)"
+    },
+    {
+      "type": "assertion",
+      "description": "The section 'إدارة البيانات والتجربة الحية' is visible"
+    },
+    {
+      "type": "action",
+      "description": "Click the green button labeled 'توليد تجربة حية شاملة' (generate live demo)"
+    },
+    {
+      "type": "assertion",
+      "description": "Wait up to 30 seconds: a success toast notification appears (green notification confirming the demo dataset was generated)"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'مخزون الفترات (24 ساعة)' (permits inventory)"
+    },
+    {
+      "type": "assertion",
+      "description": "The permits inventory now shows permit cards/list entries (not the empty state)"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'العملاء وحسابات الواتساب' (customers)"
+    },
+    {
+      "type": "assertion",
+      "description": "The customers list now shows customer rows (not the empty state)"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'طلبات البيع والحجوزات' (orders)"
+    },
+    {
+      "type": "assertion",
+      "description": "The orders list now shows order rows (not the empty state)"
+    },
+    {
+      "type": "action",
+      "description": "Click the sidebar item labeled 'رسائل الـ SMS والسداد' (SMS)"
+    },
+    {
+      "type": "assertion",
+      "description": "The SMS inbox now shows bank/mobile-wallet transfer messages"
+    }
+  ],
+  "projectId": "bb661132-81eb-42dc-ab97-765ad143aebf"
+}
