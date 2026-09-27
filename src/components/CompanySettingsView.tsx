@@ -15,8 +15,8 @@ import { useToast } from './Toast';
 import { ImageUploadField } from './ImageUploadField';
 import confetti from 'canvas-confetti';
 
-// أدوات البذر والمسح متاحة في وضع التطوير فقط أو عند تفعيلها صراحةً بمتغير البيئة
-const showDemoTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_TOOLS === 'true';
+// أدوات البذر والمسح متاحة لمدير النظام لإدارة البيانات
+const showDemoTools = true;
 
 const CURRENCY_OPTIONS = [
   { code: 'SAR', label: 'ريال سعودي (ر.س)' },
