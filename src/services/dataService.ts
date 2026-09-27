@@ -332,7 +332,7 @@ export class DataService {
 
       // 2. Sync Customers
       const { data: custs } = await sb.from('customers').select('*').order('created_at', { ascending: false });
-      if (custs && custs.length > 0) {
+      if (custs !== null && custs !== undefined) {
         const mappedCusts: Customer[] = custs.map(c => ({
           id: c.id,
           fullName: c.full_name,
@@ -349,7 +349,7 @@ export class DataService {
 
       // 3. Sync Permits
       const { data: permList } = await sb.from('permits').select('*').order('created_at', { ascending: false });
-      if (permList) {
+      if (permList !== null && permList !== undefined) {
         const mappedPermits: Permit[] = permList.map(p => ({
           id: p.id,
           permitCode: p.permit_code,
@@ -372,7 +372,7 @@ export class DataService {
 
       // 4. Sync Orders
       const { data: orderList } = await sb.from('sales_orders').select('*').order('created_at', { ascending: false });
-      if (orderList && orderList.length > 0) {
+      if (orderList !== null && orderList !== undefined) {
         // جلب أسماء العملاء
         const customers = this.getCustomers();
         const custMap: Record<string, Customer> = {};
@@ -387,7 +387,7 @@ export class DataService {
         });
 
         // القيم المحلية (عملة/أرشفة) تُدمج عند غياب الأعمدة السحابية
-        const localOrders = loadFromStorage<SalesOrder[]>(STORAGE_KEYS.ORDERS, initialOrders);
+        const localOrders = loadFromStorage<SalesOrder[]>(STORAGE_KEYS.ORDERS, []);
         const localOrderMap: Record<string, SalesOrder> = {};
         localOrders.forEach(o => { localOrderMap[o.id] = o; });
 
@@ -424,7 +424,7 @@ export class DataService {
 
       // 5. Sync SMS Messages
       const { data: smsList } = await sb.from('sms_messages').select('*').order('received_at', { ascending: false }).limit(200);
-      if (smsList && smsList.length > 0) {
+      if (smsList !== null && smsList !== undefined) {
         const mappedSms: SmsMessage[] = smsList.map(s => ({
           id: s.id,
           sender: s.sender,
@@ -514,7 +514,7 @@ export class DataService {
 
       // 7. Sync Financial Accounts
       const { data: accList } = await sb.from('financial_accounts').select('*').order('created_at', { ascending: true });
-      if (accList && accList.length > 0) {
+      if (accList !== null && accList !== undefined) {
         const localAccMap: Record<string, FinancialAccount> = {};
         this.getFinancialAccounts().forEach(a => { localAccMap[a.id] = a; });
         const mappedAccounts: FinancialAccount[] = accList.map(a => ({
@@ -537,7 +537,7 @@ export class DataService {
 
       // 8. Sync Audit Logs (آخر 500 سجل فقط — جدول السحابة لا يخزن اسم المستخدم، نسترجعه من الملفات)
       const { data: logList } = await sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500);
-      if (logList && logList.length > 0) {
+      if (logList !== null && logList !== undefined) {
         const nameMap: Record<string, string> = {};
         this.getProfiles().forEach(p => { nameMap[p.id] = p.fullName; });
 
@@ -626,7 +626,7 @@ export class DataService {
 
   // --- Financial Accounts ---
   static getFinancialAccounts(): FinancialAccount[] {
-    return loadFromStorage(STORAGE_KEYS.ACCOUNTS, initialFinancialAccounts);
+    return loadFromStorage(STORAGE_KEYS.ACCOUNTS, []);
   }
 
   static async saveFinancialAccount(account: Omit<FinancialAccount, 'id' | 'createdAt'> & { id?: string }): Promise<FinancialAccount> {
@@ -866,7 +866,7 @@ export class DataService {
 
   // --- Customers ---
   static getCustomers(): Customer[] {
-    return loadFromStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
+    return loadFromStorage(STORAGE_KEYS.CUSTOMERS, []);
   }
 
   static async saveCustomer(customer: Omit<Customer, 'id' | 'createdAt' | 'totalOrdersCount' | 'totalSpent'> & { id?: string }): Promise<Customer> {
@@ -934,7 +934,7 @@ export class DataService {
 
   // --- Permits ---
   static getPermits(): Permit[] {
-    return loadFromStorage(STORAGE_KEYS.PERMITS, generateInitialPermits());
+    return loadFromStorage(STORAGE_KEYS.PERMITS, []);
   }
 
   static async claimPermit(
@@ -1231,7 +1231,7 @@ export class DataService {
 
   // --- Orders ---
   static getOrders(): SalesOrder[] {
-    return loadFromStorage(STORAGE_KEYS.ORDERS, initialOrders);
+    return loadFromStorage(STORAGE_KEYS.ORDERS, []);
   }
 
   static async createOrder(orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'remainingAmount' | 'createdAt'>): Promise<SalesOrder> {
@@ -1393,7 +1393,7 @@ export class DataService {
 
   // --- SMS ---
   static getSmsMessages(): SmsMessage[] {
-    return loadFromStorage(STORAGE_KEYS.SMS, initialSmsMessages);
+    return loadFromStorage(STORAGE_KEYS.SMS, []);
   }
 
   static parseSmsText(rawBody: string, sender: string): Partial<SmsMessage> {
@@ -1906,7 +1906,7 @@ export class DataService {
   }
 
   static getAuditLogs(): AuditLog[] {
-    return loadFromStorage(STORAGE_KEYS.LOGS, initialAuditLogs);
+    return loadFromStorage(STORAGE_KEYS.LOGS, []);
   }
 
   static addAuditLog(
@@ -1992,7 +1992,7 @@ export class DataService {
     saveToStorage(STORAGE_KEYS.ORDERS, []);
     saveToStorage(STORAGE_KEYS.SMS, []);
     saveToStorage(STORAGE_KEYS.LOGS, []);
-    saveToStorage(STORAGE_KEYS.ACCOUNTS, initialFinancialAccounts);
+    saveToStorage(STORAGE_KEYS.ACCOUNTS, []);
     // نصوص سيناريو السداد اليومي ترتبط بالبيانات المولّدة — تُمسح معها حتى لا تبقى بيانات قديمة
     try {
       localStorage.removeItem(STORAGE_KEYS.DAILY_SCENARIO);
