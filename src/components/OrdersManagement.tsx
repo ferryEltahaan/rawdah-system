@@ -44,7 +44,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'today' | 'tomorrow' | 'unpaid' | 'unsent'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'today' | 'tomorrow' | 'unpaid' | 'unsent' | 'overdue'>('all');
   
   // Create Order Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -319,6 +319,7 @@ ${accountsList}
     if (quickFilter === 'tomorrow') matchesQuick = order.targetDate === tomorrowStr;
     if (quickFilter === 'unpaid') matchesQuick = order.paidAmount < order.totalAmount;
     if (quickFilter === 'unsent') matchesQuick = order.deliveryStatus !== 'sent';
+    if (quickFilter === 'overdue') matchesQuick = order.targetDate < today && order.paidAmount < order.totalAmount && order.orderStatus !== 'cancelled';
 
     return matchesSearch && matchesStatus && matchesType && matchesArchive && matchesQuick;
   });
@@ -329,6 +330,9 @@ ${accountsList}
   const tomorrowOrdersCount = orders.filter(o => !o.isArchived && o.targetDate === tomorrowStr).length;
   const unpaidOrdersCount = orders.filter(o => !o.isArchived && o.paidAmount < o.totalAmount).length;
   const unsentOrdersCount = orders.filter(o => !o.isArchived && o.deliveryStatus !== 'sent').length;
+  const overdueOrdersCount = orders.filter(
+    o => !o.isArchived && o.targetDate < today && o.paidAmount < o.totalAmount && o.orderStatus !== 'cancelled'
+  ).length;
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -499,6 +503,19 @@ ${accountsList}
             <span>💳 بانتظار السداد</span>
             <span className="bg-amber-800 text-white px-1.5 py-0.5 rounded-full text-[10px]">{unpaidOrdersCount}</span>
           </button>
+          {overdueOrdersCount > 0 && (
+            <button
+              onClick={() => setQuickFilter('overdue')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                quickFilter === 'overdue'
+                  ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                  : 'bg-red-50/70 text-red-800 border-red-200 hover:bg-red-100/70'
+              }`}
+            >
+              <span>⏰ متأخرات</span>
+              <span className="bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[10px]">{overdueOrdersCount}</span>
+            </button>
+          )}
           <button
             onClick={() => setQuickFilter('unsent')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
