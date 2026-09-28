@@ -11,7 +11,12 @@ import {
   Printer,
   FileSpreadsheet,
   Archive,
-  ArchiveRestore
+  ArchiveRestore,
+  Download,
+  Eye,
+  ImageIcon,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 import { SalesOrder, Customer, UserProfile, OrderStatus, DeliveryStatus, OrderType, Permit, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';
@@ -222,6 +227,33 @@ ${accountsList}
     } catch {
       toast.error('تعذر النسخ تلقائياً — يمكنك تحديد النص ونسخه يدوياً.');
     }
+  };
+
+  const handleCopyPermitImage = async (imageUrl: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob })
+      ]);
+      toast.success('تم نسخ صورة التصريح إلى الحافظة! يمكنك الآن لصقها مباشرة في شات الواتساب (Ctrl + V).');
+    } catch {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = `تصريح_${todayRiyadh()}.png`;
+      link.click();
+      toast.info('تم نسخ/تحميل صورة التصريح لجهازك لترفقها في رسالة الواتساب.');
+    }
+  };
+
+  const handleDownloadPermitImage = (imageUrl: string, permitCode: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `${permitCode}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`تم تحميل صورة التصريح ${permitCode} بنجاح.`);
   };
 
   const handlePrintReceipt = async (order: SalesOrder) => {
@@ -509,9 +541,28 @@ ${accountsList}
                 filteredOrders.map(order => {
                   const isFullyPaid = order.paidAmount >= order.totalAmount && order.totalAmount > 0;
                   const orderSym = currencySymbol(getOrderCurrency(order));
-                  const claimedPermits = (order.assignedPermitIds || [])
+
+                  // 1. جلب التصاريح المرتبطة بالطلب مباشرة
+                  const directPermitIds = order.assignedPermitIds || [];
+                  let claimedPermits = directPermitIds
                     .map(id => permitById[id])
                     .filter(Boolean) as Permit[];
+
+                  // 2. فحص ذكي: إذا لم تكن مرتبطة بالـ ID لكن العميل مخصص له تصاريح في المخزون
+                  if (claimedPermits.length < order.permitsCount) {
+                    const customerPermits = permits.filter(p => 
+                      p.status === 'assigned' && 
+                      p.assignedToCustomerId === order.customerId && 
+                      !claimedPermits.some(cp => cp.id === p.id)
+                    );
+                    claimedPermits = [...claimedPermits, ...customerPermits].slice(0, order.permitsCount);
+                  }
+
+                  // 3. إذا كان التصريح مسحوباً ومخصصاً، تصبح حالة الطلب «مؤكد» تلقائياً
+                  const effectiveOrderStatus: OrderStatus = 
+                    claimedPermits.length > 0 && order.orderStatus !== 'cancelled'
+                      ? 'confirmed'
+                      : order.orderStatus;
 
                   return (
                     <tr key={order.id} className={`transition-colors ${order.isArchived ? 'bg-slate-50/60 opacity-90' : 'hover:bg-slate-50/80'}`}>
@@ -568,11 +619,17 @@ ${accountsList}
                       {/* Order Status Select */}
                       <td className="py-3.5 px-4">
                         <select
-                          value={order.orderStatus}
+                          value={effectiveOrderStatus}
                           onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none font-medium"
+                          className={`border rounded-xl px-2.5 py-1 text-xs font-bold focus:outline-none transition-all ${
+                            effectiveOrderStatus === 'confirmed'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : effectiveOrderStatus === 'searching'
+                              ? 'bg-amber-50 text-amber-800 border-amber-300'
+                              : 'bg-slate-50 text-slate-800 border-slate-200'
+                          }`}
                         >
-                          <option value="confirmed">مؤكد</option>
+                          <option value="confirmed">مؤكد ✓</option>
                           <option value="searching">جاري البحث</option>
                           <option value="unconfirmed">غير مؤكد</option>
                           <option value="cancelled">ملغي</option>
@@ -973,9 +1030,89 @@ ${accountsList}
               </button>
             </div>
 
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 space-y-1.5 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 space-y-1.5 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
               {buildWhatsAppMessage(whatsAppModalOrder, whatsAppTemplate)}
             </div>
+
+            {/* عرض صور التصاريح المخصصة مع أزرار نسخ الصورة للواتساب والتحميل */}
+            {(() => {
+              const direct = (whatsAppModalOrder.assignedPermitIds || [])
+                .map(id => permitById[id])
+                .filter(Boolean) as Permit[];
+              const claimed = direct.length > 0 
+                ? direct 
+                : permits.filter(p => p.status === 'assigned' && p.assignedToCustomerId === whatsAppModalOrder.customerId);
+              
+              if (claimed.length === 0) return null;
+
+              return (
+                <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-emerald-600" />
+                      <span>صور التصاريح المخصصة ({claimed.length}):</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-bold">جاهزة للإرسال</span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {claimed.map(p => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 bg-white p-2 rounded-xl border border-emerald-100 shadow-xs">
+                        <div className="flex items-center gap-2">
+                          {p.imageUrl ? (
+                            <img src={p.imageUrl} alt={p.permitCode} className="w-10 h-10 rounded-lg object-cover border border-slate-200" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+                              <Ticket className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div>
+                            <div className="text-xs font-mono font-bold text-slate-800">{p.permitCode}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">{p.slotDate} ({p.slotFormatted})</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {p.imageUrl && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPermitImage(p.imageUrl)}
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs transition-all"
+                                title="نسخ صورة التصريح للحافظة (للصقها بالواتساب Ctrl+V)"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>نسخ الصورة</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPermitImage(p.imageUrl, p.permitCode)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                title="تحميل الصورة على جهازك"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPermitPreview(p)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                title="معاينة الصورة"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] text-emerald-800 leading-relaxed bg-white/70 p-2 rounded-lg border border-emerald-200">
+                    💡 <strong>طريقة الإرسال:</strong> اضغط على <strong>«نسخ الصورة»</strong> ثم في محادثة الواتساب اضغط <strong>(Ctrl + V)</strong> للصق صورة التصريح وإرسالها فوراً مع الرسالة.
+                  </p>
+                </div>
+              );
+            })()}
 
             <label className="flex items-center gap-2 bg-emerald-50/70 border border-emerald-200 rounded-2xl px-3.5 py-2.5 cursor-pointer select-none">
               <input

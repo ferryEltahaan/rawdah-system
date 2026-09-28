@@ -570,13 +570,14 @@ export class DataService {
     }
   }
 
-  // --- Realtime Webhook Listener (استقبال رسائل أندرويد اللحظية) ---
+  // --- Realtime Webhook & Cloud Stream Listener (استقبال التحديثات اللحظية من السحابة) ---
   static initRealtimeListener(): () => void {
     if (!getIsConfigured() || !getSupabase()) return () => {};
     const sb = getSupabase()!;
 
     const channel = sb
-      .channel('public:sms_messages_stream')
+      .channel('public:system_realtime_stream')
+      // 1. استقبال رسائل الـ SMS اللحظية
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'sms_messages' },
@@ -608,6 +609,93 @@ export class DataService {
             window.dispatchEvent(new CustomEvent('rawdah_sms_incoming', { detail: outcome }));
             window.dispatchEvent(new Event('rawdah_storage_update'));
           }
+        }
+      )
+      // 2. استقبال العملاء المسجلين ذاتياً أو المحدثين لحظياً
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'customers' },
+        (payload) => {
+          const row = (payload.new || payload.old) as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Customer Realtime event received:', payload.eventType, row);
+
+          const currentCusts = DataService.getCustomers();
+          if (payload.eventType === 'DELETE') {
+            const filtered = currentCusts.filter(c => c.id !== row.id);
+            saveToStorage(STORAGE_KEYS.CUSTOMERS, filtered);
+          } else {
+            const mapped: Customer = {
+              id: row.id,
+              fullName: row.full_name,
+              whatsappNumber: row.whatsapp_number,
+              additionalPhone: row.additional_phone || undefined,
+              nickname: row.nickname || undefined,
+              notes: row.notes || undefined,
+              totalOrdersCount: row.total_orders_count || 0,
+              totalSpent: parseFloat(row.total_spent || '0'),
+              createdAt: row.created_at || new Date().toISOString(),
+            };
+
+            const idx = currentCusts.findIndex(c => c.id === mapped.id);
+            if (idx >= 0) {
+              currentCusts[idx] = { ...currentCusts[idx], ...mapped };
+            } else {
+              currentCusts.unshift(mapped);
+            }
+            saveToStorage(STORAGE_KEYS.CUSTOMERS, currentCusts);
+            window.dispatchEvent(new CustomEvent('rawdah_customer_incoming', { detail: mapped }));
+          }
+          window.dispatchEvent(new Event('rawdah_storage_update'));
+        }
+      )
+      // 3. استقبال تحديثات الطلبات لحظياً
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sales_orders' },
+        (payload) => {
+          const row = (payload.new || payload.old) as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Order Realtime event received:', payload.eventType, row);
+
+          const currentOrders = DataService.getOrders();
+          if (payload.eventType === 'DELETE') {
+            const filtered = currentOrders.filter(o => o.id !== row.id);
+            saveToStorage(STORAGE_KEYS.ORDERS, filtered);
+          } else {
+            const mappedOrder: SalesOrder = {
+              id: row.id,
+              orderNumber: row.order_number,
+              customerId: row.customer_id,
+              customerName: row.customer_name || '',
+              customerWhatsapp: row.customer_whatsapp || '',
+              permitsCount: row.permits_count,
+              targetDate: row.target_date,
+              targetTime: row.target_time,
+              orderType: row.order_type,
+              orderStatus: row.order_status,
+              deliveryStatus: row.delivery_status,
+              unitPrice: parseFloat(row.unit_price || '0'),
+              totalAmount: parseFloat(row.total_amount || '0'),
+              paidAmount: parseFloat(row.paid_amount || '0'),
+              remainingAmount: parseFloat(row.remaining_amount || '0'),
+              currency: row.currency || 'SAR',
+              isArchived: row.is_archived ?? false,
+              archivedAt: row.archived_at || undefined,
+              notes: row.notes,
+              createdBy: row.created_by || '',
+              createdAt: row.created_at,
+            };
+
+            const idx = currentOrders.findIndex(o => o.id === mappedOrder.id);
+            if (idx >= 0) {
+              currentOrders[idx] = { ...currentOrders[idx], ...mappedOrder };
+            } else {
+              currentOrders.unshift(mappedOrder);
+            }
+            saveToStorage(STORAGE_KEYS.ORDERS, currentOrders);
+          }
+          window.dispatchEvent(new Event('rawdah_storage_update'));
         }
       )
       .subscribe();
@@ -979,6 +1067,172 @@ export class DataService {
     return newCustomer;
   }
 
+  static async saveCustomersBulk(customersToImport: Array<{
+    fullName: string;
+    whatsappNumber: string;
+    additionalPhone?: string;
+    nickname?: string;
+    notes?: string;
+  }>): Promise<{ added: number; updated: number; total: number }> {
+    if (!customersToImport || customersToImport.length === 0) {
+      return { added: 0, updated: 0, total: 0 };
+    }
+
+    const normalizePhone = (phone: string) => (phone || '').replace(/\D/g, '');
+    const matchPhones = (p1: string, p2: string) => {
+      const n1 = normalizePhone(p1);
+      const n2 = normalizePhone(p2);
+      if (!n1 || !n2) return false;
+      if (n1 === n2) return true;
+      if (n1.length >= 9 && n2.length >= 9) {
+        return n1.slice(-9) === n2.slice(-9);
+      }
+      return false;
+    };
+
+    const appendNoteSafely = (oldNotes?: string, newNote?: string) => {
+      if (!newNote || !newNote.trim()) return oldNotes;
+      if (!oldNotes || !oldNotes.trim()) return newNote.trim();
+      if (oldNotes.includes(newNote.trim())) return oldNotes;
+      return `${oldNotes.trim()}\n${newNote.trim()}`;
+    };
+
+    const currentCustomers = this.getCustomers();
+    let addedCount = 0;
+    let updatedCount = 0;
+    const upsertList: any[] = [];
+
+    customersToImport.forEach(item => {
+      const trimmedName = item.fullName?.trim();
+      const rawWhatsapp = (item.whatsappNumber || '').trim();
+      const normalizedW = normalizePhone(rawWhatsapp);
+      if (!trimmedName || !normalizedW) return;
+
+      const formattedWhatsapp = rawWhatsapp.startsWith('+') ? rawWhatsapp : `+${normalizedW}`;
+
+      const existingIndex = currentCustomers.findIndex(c => {
+        return (
+          matchPhones(c.whatsappNumber, normalizedW) ||
+          (c.additionalPhone && matchPhones(c.additionalPhone, normalizedW))
+        );
+      });
+
+      if (existingIndex >= 0) {
+        // Update existing customer details if provided
+        currentCustomers[existingIndex] = {
+          ...currentCustomers[existingIndex],
+          fullName: trimmedName || currentCustomers[existingIndex].fullName,
+          nickname: item.nickname?.trim() || currentCustomers[existingIndex].nickname,
+          additionalPhone: item.additionalPhone ? item.additionalPhone.trim() : currentCustomers[existingIndex].additionalPhone,
+          notes: appendNoteSafely(currentCustomers[existingIndex].notes, item.notes),
+        };
+        updatedCount++;
+        upsertList.push({
+          id: currentCustomers[existingIndex].id,
+          full_name: currentCustomers[existingIndex].fullName,
+          whatsapp_number: currentCustomers[existingIndex].whatsappNumber,
+          additional_phone: currentCustomers[existingIndex].additionalPhone || null,
+          nickname: currentCustomers[existingIndex].nickname || null,
+          notes: currentCustomers[existingIndex].notes || null,
+        });
+      } else {
+        const newId = generateUUID();
+        const newCust: Customer = {
+          id: newId,
+          fullName: trimmedName,
+          whatsappNumber: formattedWhatsapp,
+          additionalPhone: item.additionalPhone ? item.additionalPhone.trim() : undefined,
+          nickname: item.nickname?.trim() || undefined,
+          notes: item.notes?.trim() || undefined,
+          totalOrdersCount: 0,
+          totalSpent: 0,
+          createdAt: new Date().toISOString(),
+        };
+        currentCustomers.unshift(newCust);
+        addedCount++;
+        upsertList.push({
+          id: newId,
+          full_name: newCust.fullName,
+          whatsapp_number: newCust.whatsappNumber,
+          additional_phone: newCust.additionalPhone || null,
+          nickname: newCust.nickname || null,
+          notes: newCust.notes || null,
+        });
+      }
+    });
+
+    saveToStorage(STORAGE_KEYS.CUSTOMERS, currentCustomers);
+
+    const currentUser = this.getCurrentUser();
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'CREATE_CUSTOMER', 'customers', 'bulk_import', {
+      added: addedCount,
+      updated: updatedCount,
+      total: addedCount + updatedCount,
+    });
+
+    // Cloud push
+    if (getIsConfigured() && getSupabase() && upsertList.length > 0) {
+      try {
+        const { error } = await getSupabase()!.from('customers').upsert(upsertList, { onConflict: 'id' });
+        if (error) {
+          console.error('Failed to batch push customers to Supabase:', error);
+        }
+      } catch (e) {
+        console.error('Failed to batch push customers to Supabase:', e);
+      }
+    }
+
+    return { added: addedCount, updated: updatedCount, total: addedCount + updatedCount };
+  }
+
+  static async deleteCustomer(customerId: string): Promise<{ success: boolean; message: string }> {
+    const customers = this.getCustomers();
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer) {
+      return { success: false, message: 'العميل غير موجود في النظام.' };
+    }
+
+    // حماية: لا يُحذف عميل له نشاط قائم — طلبات نشطة أو تصاريح مخصصة باسمه حالياً
+    const activeOrders = this.getOrders().filter(
+      o => o.customerId === customerId && o.orderStatus !== 'cancelled' && !o.isArchived
+    );
+    if (activeOrders.length > 0) {
+      return {
+        success: false,
+        message: `لا يمكن حذف العميل — لديه ${activeOrders.length} طلب نشط (أرقام: ${activeOrders.map(o => `#${o.orderNumber}`).join('، ')}). أرشف الطلبات أو ألغِها أولاً.`,
+      };
+    }
+
+    const assignedPermits = this.getPermits().filter(
+      p => p.assignedToCustomerId === customerId && p.status === 'assigned'
+    );
+    if (assignedPermits.length > 0) {
+      return {
+        success: false,
+        message: `لا يمكن حذف العميل — هناك ${assignedPermits.length} تصريح مخصص باسمه حالياً. أرجِع التصاريح للمخزون أولاً.`,
+      };
+    }
+
+    saveToStorage(STORAGE_KEYS.CUSTOMERS, customers.filter(c => c.id !== customerId));
+
+    const currentUser = this.getCurrentUser();
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'DELETE_CUSTOMER', 'customers', customerId, {
+      customerName: customer.fullName,
+      whatsappNumber: customer.whatsappNumber,
+    });
+
+    // حذف من السحابة — مستمع Realtime يبث الحذف لبقية الأجهزة فوراً
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!.from('customers').delete().eq('id', customerId);
+      } catch (e) {
+        console.error('Cloud customer delete error:', e);
+      }
+    }
+
+    return { success: true, message: `تم حذف العميل ${customer.fullName} نهائياً من النظام.` };
+  }
+
   // --- Permits ---
   static getPermits(): Permit[] {
     return loadFromStorage(STORAGE_KEYS.PERMITS, []);
@@ -1073,18 +1327,31 @@ export class DataService {
     permits[permitIndex] = permit;
     saveToStorage(STORAGE_KEYS.PERMITS, permits);
 
-    // ربط التصريح بالطلب إن اختير — محلياً في الطلب، وسحابياً في جدول الوصل order_permits
+    // ربط التصريح بالطلب (سواء تم تمريره صراحة أو البحث التلقائي عن أحدث طلب مفتوح للعميل)
+    let targetOrderId = orderId;
+    if (!targetOrderId) {
+      const allOrders = this.getOrders();
+      const openOrder = allOrders.find(o => 
+        o.customerId === customerId && 
+        o.orderStatus !== 'cancelled' && 
+        !o.isArchived && 
+        ((o.assignedPermitIds?.length || 0) < o.permitsCount)
+      );
+      if (openOrder) {
+        targetOrderId = openOrder.id;
+      }
+    }
+
     let linkedOrderNumber: number | undefined;
     let orderAutoConfirmed = false;
-    if (orderId) {
+    if (targetOrderId) {
       const orders = this.getOrders();
-      const orderIndex = orders.findIndex(o => o.id === orderId);
+      const orderIndex = orders.findIndex(o => o.id === targetOrderId);
       if (orderIndex !== -1) {
         linkedOrderNumber = orders[orderIndex].orderNumber;
         const linkedIds = orders[orderIndex].assignedPermitIds || [];
-        // تخصيص تصريح للعميل = تأكيد الطلب تلقائياً (ما لم يكن ملغياً)
-        orderAutoConfirmed =
-          orders[orderIndex].orderStatus !== 'confirmed' && orders[orderIndex].orderStatus !== 'cancelled';
+        // تخصيص تصريح للعميل = تأكيد الطلب تلقائياً
+        orderAutoConfirmed = orders[orderIndex].orderStatus !== 'cancelled';
         orders[orderIndex] = {
           ...orders[orderIndex],
           assignedPermitIds: linkedIds.includes(permitId) ? linkedIds : [...linkedIds, permitId],
@@ -1099,10 +1366,10 @@ export class DataService {
           await getSupabase()!.from('order_permits').delete().eq('permit_id', permitId);
           const { error: linkError } = await getSupabase()!
             .from('order_permits')
-            .insert({ order_id: orderId, permit_id: permitId });
+            .insert({ order_id: targetOrderId, permit_id: permitId });
           if (linkError) console.error('Cloud order permit link error:', linkError);
           if (orderAutoConfirmed) {
-            await getSupabase()!.from('sales_orders').update({ order_status: 'confirmed' }).eq('id', orderId);
+            await getSupabase()!.from('sales_orders').update({ order_status: 'confirmed' }).eq('id', targetOrderId);
           }
         } catch (e) {
           console.error(e);

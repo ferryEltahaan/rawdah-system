@@ -16,7 +16,9 @@ import {
   Pencil,
   Archive,
   FileX,
-  User
+  User,
+  UserPlus,
+  UserMinus
 } from 'lucide-react';
 import { AuditLog } from '../types';
 import { DataService } from '../services/dataService';
@@ -36,7 +38,9 @@ const ACTION_LABELS: Record<string, string> = {
   UPDATE_PROFILE: 'تحديث ملف الموظف الشخصي',
   TOGGLE_EMPLOYEE_STATUS: 'إيقاف/تفعيل حساب موظف',
   ARCHIVE_ORDER: 'أرشفة/استرجاع طلب',
+  CREATE_CUSTOMER: 'تسجيل/استيراد عميل',
   UPDATE_CUSTOMER: 'تحديث بيانات عميل',
+  DELETE_CUSTOMER: 'حذف عميل',
 };
 
 const formatDetailValue = (value: unknown): string => {
@@ -181,6 +185,20 @@ export const AuditLogViewer: React.FC = () => {
             <span>تحديث بيانات عميل</span>
           </span>
         );
+      case 'CREATE_CUSTOMER':
+        return (
+          <span className="bg-lime-50 text-lime-800 border border-lime-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <UserPlus className="w-3 h-3 text-lime-600" />
+            <span>تسجيل/استيراد عميل</span>
+          </span>
+        );
+      case 'DELETE_CUSTOMER':
+        return (
+          <span className="bg-red-50 text-red-800 border border-red-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <UserMinus className="w-3 h-3 text-red-600" />
+            <span>حذف عميل</span>
+          </span>
+        );
       case 'DELETE_PERMIT':
         return (
           <span className="bg-red-50 text-red-800 border border-red-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
@@ -191,7 +209,7 @@ export const AuditLogViewer: React.FC = () => {
       default:
         return (
           <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] px-2.5 py-1 rounded-full font-bold">
-            تحديث بيانات
+            {type}
           </span>
         );
     }
@@ -254,7 +272,9 @@ export const AuditLogViewer: React.FC = () => {
           <option value="CREATE_ORDER">إنشاء طلب</option>
           <option value="UPDATE_ORDER">تحديث بيانات طلب</option>
           <option value="ARCHIVE_ORDER">أرشفة/استرجاع طلب</option>
+          <option value="CREATE_CUSTOMER">تسجيل/استيراد عميل</option>
           <option value="UPDATE_CUSTOMER">تحديث بيانات عميل</option>
+          <option value="DELETE_CUSTOMER">حذف عميل</option>
           <option value="UPLOAD_PERMITS">رفع تصاريح</option>
           <option value="DELETE_PERMIT">حذف تصريح</option>
           <option value="UPDATE_PERMISSIONS">تعديل صلاحيات موظف</option>

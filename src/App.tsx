@@ -17,6 +17,7 @@ const FinancialAccountsView = React.lazy(() => import('./components/FinancialAcc
 const EmployeesAndRolesView = React.lazy(() => import('./components/EmployeesAndRolesView').then(m => ({ default: m.EmployeesAndRolesView })));
 const CompanySettingsView = React.lazy(() => import('./components/CompanySettingsView').then(m => ({ default: m.CompanySettingsView })));
 const AuditLogViewer = React.lazy(() => import('./components/AuditLogViewer').then(m => ({ default: m.AuditLogViewer })));
+const CustomerSelfRegister = React.lazy(() => import('./components/CustomerSelfRegister').then(m => ({ default: m.CustomerSelfRegister })));
 
 const TabLoadingFallback: React.FC = () => (
   <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
@@ -118,8 +119,25 @@ const AppContent: React.FC = () => {
       }
     };
 
+    const handleIncomingCustomer = (e: any) => {
+      const cust = e.detail;
+      if (cust?.fullName) {
+        toast.success(`👤 عميل جديد مسجل ذاتياً: ${cust.fullName} (${cust.whatsappNumber})`);
+      }
+    };
+
+    const handleStorageCrossTab = (e: StorageEvent) => {
+      if (e.key?.startsWith('rawdah_')) {
+        updateCounts();
+        window.dispatchEvent(new Event('rawdah_storage_update'));
+      }
+    };
+
     window.addEventListener('rawdah_sms_incoming', handleIncomingSms);
+    window.addEventListener('rawdah_customer_incoming', handleIncomingCustomer);
     window.addEventListener('rawdah_storage_update', handleStorageUpdate);
+    window.addEventListener('storage', handleStorageCrossTab);
+    
     // عند تحديث إعدادات السحابة يُعاد التزامن كاملاً
     const handleCloudUpdate = () => {
       DataService.syncFromCloud().then(() => updateCounts());
@@ -129,7 +147,9 @@ const AppContent: React.FC = () => {
     return () => {
       cleanupRealtime();
       window.removeEventListener('rawdah_sms_incoming', handleIncomingSms);
+      window.removeEventListener('rawdah_customer_incoming', handleIncomingCustomer);
       window.removeEventListener('rawdah_storage_update', handleStorageUpdate);
+      window.removeEventListener('storage', handleStorageCrossTab);
       window.removeEventListener('rawdah_cloud_updated', handleCloudUpdate);
     };
   }, [isLoggedIn]);
@@ -172,6 +192,21 @@ const AppContent: React.FC = () => {
   };
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+
+  // بوابة التسجيل الذاتي للعملاء (رابط عام يفتحه العميل مباشرة دون تسجيل دخول)
+  const isRegisterPage = typeof window !== 'undefined' && (
+    window.location.search.toLowerCase().includes('register') ||
+    window.location.hash.toLowerCase().includes('register') ||
+    window.location.pathname.toLowerCase().endsWith('/register')
+  );
+
+  if (isRegisterPage) {
+    return (
+      <Suspense fallback={<TabLoadingFallback />}>
+        <CustomerSelfRegister />
+      </Suspense>
+    );
+  }
 
   if (!isLoggedIn || !currentUser) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;

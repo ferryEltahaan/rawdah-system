@@ -528,7 +528,16 @@ ${companyName}`;
                 {filteredCustomers.map(customer => (
                   <button
                     key={customer.id}
-                    onClick={() => { setSelectedCustomerId(customer.id); setClaimOrderId(''); }}
+                    onClick={() => {
+                      setSelectedCustomerId(customer.id);
+                      const custOrders = orders.filter(o => 
+                        o.customerId === customer.id && 
+                        o.orderStatus !== 'cancelled' && 
+                        !o.isArchived && 
+                        ((o.assignedPermitIds?.length || 0) < o.permitsCount)
+                      );
+                      setClaimOrderId(custOrders.length > 0 ? custOrders[0].id : '');
+                    }}
                     className={`w-full text-right p-3 rounded-xl text-xs flex items-center justify-between transition-all ${
                       selectedCustomerId === customer.id
                         ? 'bg-emerald-600 text-white font-bold'
