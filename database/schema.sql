@@ -325,6 +325,7 @@ ALTER TABLE audit_logs         ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE t TEXT;
+        p RECORD;
 BEGIN
     FOREACH t IN ARRAY ARRAY[
         'company_settings','financial_accounts','profiles','customers','permits',
