@@ -16,6 +16,7 @@ import { UserProfile, UserRole, CustomPermissions } from '../types';
 import { DataService } from '../services/dataService';
 import { useToast } from './Toast';
 import { ImageUploadField } from './ImageUploadField';
+import { hashPassword } from '../utils/passwordHash';
 import confetti from 'canvas-confetti';
 
 const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, CustomPermissions> = {
@@ -292,11 +293,12 @@ export const EmployeesAndRolesView: React.FC = () => {
 
     setIsSaving(true);
     try {
+      const passwordHash = password ? await hashPassword(password) : '';
       const { localSaved } = await DataService.saveProfile({
         id: editingProfileId || undefined,
         fullName: fullName.trim(),
         username: username.trim(),
-        password,
+        password: passwordHash,
         phoneNumber: phoneNumber.trim(),
         whatsappNumber: whatsappNumber.trim(),
         role,

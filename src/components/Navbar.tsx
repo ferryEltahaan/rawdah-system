@@ -40,11 +40,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isCloudActive, setIsCloudActive] = useState<boolean>(
     Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || import.meta.env.VITE_SUPABASE_URL)
   );
+  const [lastSync, setLastSync] = useState<string | null>(DataService.getLastCloudSync());
 
   useEffect(() => {
     // Listen for real-time company settings updates instantly
     const handleUpdate = () => {
       setCompanySettings(DataService.getCompanySettings());
+      setLastSync(DataService.getLastCloudSync());
     };
     window.addEventListener('rawdah_storage_update', handleUpdate);
 
@@ -54,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || (import.meta as any).env?.VITE_SUPABASE_URL)
       );
       setCompanySettings(DataService.getCompanySettings());
+      setLastSync(DataService.getLastCloudSync());
     };
     window.addEventListener('rawdah_cloud_updated', handleCloudUpdate);
 
@@ -160,6 +163,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">
                 {isCloudActive ? 'السحابة متصلة' : 'الربط السحابي'}
               </span>
+              {isCloudActive && lastSync && (
+                <span className="hidden md:inline text-[10px] font-bold text-emerald-600 bg-emerald-100/70 px-1.5 py-0.5 rounded-md font-mono" title="آخر مزامنة بيانات مع السحابة">
+                  {new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(lastSync))}
+                </span>
+              )}
               <span className={`w-2 h-2 rounded-full ${isCloudActive ? 'bg-emerald-500 animate-ping' : 'bg-amber-400'}`}></span>
             </button>
 

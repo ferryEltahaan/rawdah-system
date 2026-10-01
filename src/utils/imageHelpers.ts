@@ -72,3 +72,27 @@ export function validateImageFile(file: File): string | null {
 export function describeDataUrlSize(dataUrl: string): string {
   return `${Math.max(1, Math.round(dataUrl.length / 1024))} كيلوبايت`;
 }
+
+/**
+ * يحوّل data URL إلى Blob — هذا شرط أساسي للحصول على رابط حقيقي يعمل على الموبايل،
+ * لأن متصفحات الجوال ترفض تنزيل روابط data: وتفتحها كصفحة فارغة.
+ */
+export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl);
+  if (!response.ok) throw new Error('fetch-failed');
+  return await response.blob();
+}
+
+export async function dataUrlToObjectUrl(dataUrl: string): Promise<string> {
+  return URL.createObjectURL(await dataUrlToBlob(dataUrl));
+}
+
+/** هل يمكن مشاركة هذا الملف مباشرة من داخل الموقع (زر "مشاركة" → واتساب)؟ */
+export async function canShareImageFile(blob: Blob): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.canShare) return false;
+    return navigator.canShare({ files: [new File([blob], 'permit.png', { type: blob.type || 'image/png' })] });
+  } catch {
+    return false;
+  }
+}

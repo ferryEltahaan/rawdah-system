@@ -16,6 +16,7 @@ export interface UserProfile {
   id: string;
   fullName: string;
   username: string;
+  /** بصمة SHA-256 لكلمة المرور — لا تُخزن كلمة المرور نصاً صريحاً أبداً */
   password: string;
   phoneNumber: string;
   whatsappNumber: string;
@@ -109,6 +110,17 @@ export type OrderType = 'instant' | 'scheduled'; // فوري / حجز موعد
 export type OrderStatus = 'confirmed' | 'searching' | 'unconfirmed' | 'cancelled'; // مؤكد / جاري البحث / غير مؤكد / ملغي
 export type DeliveryStatus = 'sent' | 'waiting' | 'not_sent'; // تم إرساله / انتظار / لم يتم الإرسال
 
+// سداد مُسجّل على طلب — يعرف مين سجّله وإمتى، عشان آخر اليوم يتحاسب كل موظف على اللي قبضه
+export interface OrderPayment {
+  id: string;
+  amount: number;
+  method: 'manual' | 'sms'; // يدوي (زر تم السداد) أو مطابقة رسالة SMS
+  byUserId: string;
+  byUserName: string;
+  at: string; // ISO timestamp
+  note?: string;
+}
+
 export interface SalesOrder {
   id: string;
   orderNumber: number;
@@ -116,6 +128,8 @@ export interface SalesOrder {
   customerName: string;
   customerWhatsapp: string;
   permitsCount: number;
+  permitsCountMale?: number; // عدد تصاريح الذكور (اختياري — لطلعات الطلبات القديمة غير موجود)
+  permitsCountFemale?: number; // عدد تصاريح الإناث
   targetDate: string;
   targetTime: string; // e.g. "14:20"
   orderType: OrderType;
@@ -129,6 +143,8 @@ export interface SalesOrder {
   isArchived?: boolean; // أرشفة تلقائية عند اكتمال السداد وانقضاء الموعد
   archivedAt?: string;
   assignedPermitIds?: string[];
+  payments?: OrderPayment[]; // سجل السدادات المسجلة على الطلب (زر تم السداد + مطابقات SMS)
+  lastReminderAt?: string; // آخر مرة أُرسل فيها تذكير سداد للعميل
   notes?: string;
   createdBy: string;
   createdAt: string;
@@ -156,7 +172,7 @@ export interface AuditLog {
   id: string;
   userId: string;
   userName: string;
-  actionType: 'CLAIM_PERMIT' | 'RETURN_PERMIT' | 'MATCH_SMS' | 'CREATE_ORDER' | 'UPDATE_ORDER' | 'UPLOAD_PERMITS' | 'DELETE_PERMIT' | 'DELETE_PROFILE' | 'UPDATE_PERMISSIONS' | 'ARCHIVE_ORDER' | 'CREATE_CUSTOMER' | 'UPDATE_CUSTOMER' | 'DELETE_CUSTOMER' | 'UPDATE_PROFILE' | 'TOGGLE_EMPLOYEE_STATUS';
+  actionType: 'CLAIM_PERMIT' | 'RETURN_PERMIT' | 'MATCH_SMS' | 'CREATE_ORDER' | 'UPDATE_ORDER' | 'UPLOAD_PERMITS' | 'DELETE_PERMIT' | 'DELETE_PROFILE' | 'UPDATE_PERMISSIONS' | 'ARCHIVE_ORDER' | 'CREATE_CUSTOMER' | 'UPDATE_CUSTOMER' | 'DELETE_CUSTOMER' | 'UPDATE_PROFILE' | 'TOGGLE_EMPLOYEE_STATUS' | 'RECORD_PAYMENT' | 'SEND_REMINDER';
   entityName: string;
   entityId: string;
   details: Record<string, any>;

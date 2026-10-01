@@ -1,0 +1,261 @@
+{
+  "schema": "mahara-security-audit/v1",
+  "target": {
+    "repo": "C:/Users/ferry/Desktop/qoder",
+    "commit": "8da475a",
+    "urls": [
+      "https://aeuavoqhrhzsxblrddlc.supabase.co"
+    ],
+    "stack": "React 18 SPA + Vite 6 + Supabase (postgres, RLS, realtime)"
+  },
+  "profile": "standard",
+  "generated_at": "2026-09-28T22:46:38.165681+00:00",
+  "score": {
+    "before": 8,
+    "grade_before": "F",
+    "after": null,
+    "grade_after": null
+  },
+  "tools": [
+    {
+      "name": "check_headers.py",
+      "ran": true,
+      "note": "Supabase REST endpoint only; the SPA has no hosting headers config to scan"
+    },
+    {
+      "name": "npm audit",
+      "ran": true,
+      "note": "0 vulnerabilities (npm cli)"
+    },
+    {
+      "name": "osv-scanner (OSV.dev HTTP API)",
+      "ran": true,
+      "note": "228 npm deps queried, 0 advisories"
+    },
+    {
+      "name": "manual code review",
+      "ran": true,
+      "note": "authz, secrets, client-side trust boundary"
+    },
+    {
+      "name": "live anonymous API probe",
+      "ran": true,
+      "note": "proved anon INSERT/PATCH/DELETE on customers + anon super_admin role INSERT"
+    },
+    {
+      "name": "gitleaks",
+      "ran": false,
+      "note": "not installed; replaced by git ls-files + pattern scan"
+    },
+    {
+      "name": "semgrep",
+      "ran": false,
+      "note": "not installed on this host"
+    },
+    {
+      "name": "trivy / docker (ZAP baseline, container/IaC)",
+      "ran": false,
+      "note": "Docker not available on this host"
+    }
+  ],
+  "findings": [
+    {
+      "id": "SEC-DB-001",
+      "title": "Supabase RLS allows anonymous full read/write on every business table (PII, payments, audit log)",
+      "category": "authz",
+      "severity": "critical",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review + live probe"
+      ],
+      "locations": [
+        {
+          "file": "database/schema.sql",
+          "line": 276,
+          "url": "https://aeuavoqhrhzsxblrddlc.supabase.co/rest/v1/"
+        }
+      ],
+      "evidence": "schema.sql lines 276-301 grant 'FOR ALL TO anon ... USING (true) WITH CHECK (true)' on company_settings, financial_accounts, profiles, customers, permits, sales_orders, order_permits, sms_messages. Live probe with ONLY the public anon key: anon POST /profiles role=super_admin -> 201 Created; anon PATCH /customers -> 204; anon DELETE -> 204.",
+      "cwe": "CWE-862",
+      "owasp": "A01:2021"
+    },
+    {
+      "id": "SEC-AUTHZ-002",
+      "title": "Auth is client-side only: role/permission checks enforced in React, no server authority",
+      "category": "authz",
+      "severity": "critical",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": "src/components/LoginScreen.tsx",
+          "line": 45
+        },
+        {
+          "file": "src/App.tsx",
+          "line": 66
+        },
+        {
+          "file": "src/services/mockData.ts",
+          "line": 75
+        }
+      ],
+      "evidence": "LoginScreen.tsx:45 compares found.password (plaintext, shipped in mockData.ts: admin123/sales123/inventory123/acc123/sara123) in the browser; App.tsx allowedTabs gates screens client-side. All bypassable from DevTools or by calling the REST API directly (see SEC-DB-001).",
+      "cwe": "CWE-602",
+      "owasp": "A01:2021"
+    },
+    {
+      "id": "SEC-SECRET-001",
+      "title": "Supabase anon key hardcoded in client source and shipped to every browser",
+      "category": "secrets",
+      "severity": "high",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": "src/services/supabase.ts",
+          "line": 13
+        },
+        {
+          "file": "src/components/SmsInbox.tsx",
+          "line": 762
+        },
+        {
+          "file": ".ts_work/wipe_database.py",
+          "line": 8
+        }
+      ],
+      "evidence": "DEFAULT_SUPABASE_KEY='eyJh...YvxI' and DEFAULT_SUPABASE_URL hard-coded fallbacks; full key embedded in tracked .ts_work/*.py and rendered in the SmsInbox onboarding UI. Supabase project aeuavoqhrhzsxblrddlc. Combined with SEC-DB-001 the key is effectively a full DB credential.",
+      "cwe": "CWE-798",
+      "owasp": "A05:2021"
+    },
+    {
+      "id": "SEC-SECRET-002",
+      "title": "SMS webhook secret default 'rawdah_sec_2026' shipped in source; VITE_ env vars baked into bundle",
+      "category": "secrets",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": "src/components/CloudSetupModal.tsx",
+          "line": 27
+        },
+        {
+          "file": ".env",
+          "line": 1
+        },
+        {
+          "file": ".env.local",
+          "line": 1
+        }
+      ],
+      "evidence": "CloudSetupModal.tsx:27 falls back to hardcoded 'rawdah_sec_2026'. .env/.env.local are correctly git-ignored and absent from history; VITE_ vars are baked into the client bundle at build time by design.",
+      "cwe": "CWE-798",
+      "owasp": "A05:2021"
+    },
+    {
+      "id": "SEC-DB-003",
+      "title": "audit_logs writable by anonymous users — attackers can forge or wipe audit history",
+      "category": "config",
+      "severity": "high",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": "database/schema.sql",
+          "line": 300
+        }
+      ],
+      "evidence": "'Allow insert on audit_logs ... TO anon' plus 'Allow select ... TO anon'. Non-repudiation of the audit trail is unenforceable.",
+      "cwe": "CWE-778",
+      "owasp": "A09:2021"
+    },
+    {
+      "id": "SEC-HDR-001",
+      "title": "No CSP / security headers on SPA (vercel.json + netlify.toml only contain catch-all rewrites)",
+      "category": "headers",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "check_headers.py",
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": "vercel.json",
+          "line": 1
+        },
+        {
+          "file": "netlify.toml",
+          "line": 1
+        },
+        {
+          "file": "public/_redirects",
+          "line": 1
+        }
+      ],
+      "evidence": "check_headers.py on the Supabase endpoint: grade F 45/100 — CSP FAIL, X-Content-Type-Options FAIL, Permissions-Policy FAIL. vercel.json/netlify.toml contain no headers() block.",
+      "cwe": "CWE-1021",
+      "owasp": "A05:2021"
+    },
+    {
+      "id": "SEC-INFO-001",
+      "title": "Wipe-all-data script and DB credentials committed to git history",
+      "category": "secrets",
+      "severity": "high",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": ".ts_work/wipe_database.py",
+          "line": 8
+        },
+        {
+          "file": ".ts_work/test_supabase_crud.py",
+          "line": 10
+        }
+      ],
+      "evidence": "6 tracked files under .ts_work/ embed the live project URL + anon key; wipe_database.py is a destructive table-clearing script runnable with that key. git log --all -p shows 821 matches for the project URL/key pattern across history.",
+      "cwe": "CWE-798",
+      "owasp": "A05:2021"
+    },
+    {
+      "id": "SEC-INFO-002",
+      "title": "Plaintext passwords of all 5 staff accounts present in client bundle",
+      "category": "auth",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "status": "open",
+      "source": [
+        "manual review"
+      ],
+      "locations": [
+        {
+          "file": "src/services/mockData.ts",
+          "line": 75
+        }
+      ],
+      "evidence": "admin123 / sales123 / inventory123 / acc123 / sara123 in shipped JS. 'Quick 1-click login' (LoginScreen.tsx:59) makes password entry optional. Anyone reading the bundle can log in as any role.",
+      "cwe": "CWE-256",
+      "owasp": "A07:2021"
+    }
+  ]
+}

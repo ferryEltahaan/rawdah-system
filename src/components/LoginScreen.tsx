@@ -5,17 +5,25 @@ import {
   User, 
   ShieldCheck, 
   ArrowLeft, 
-  Sparkles, 
   Eye, 
-  EyeOff,
-  CheckCircle2
+  EyeOff
 } from 'lucide-react';
-import { UserProfile, UserRole } from '../types';
+import { UserProfile } from '../types';
 import { DataService } from '../services/dataService';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { hashPassword, verifyPassword } from '../utils/passwordHash';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
 }
+
+// مطابقة مرنة: البروفايلات المتزامنة من السحابة قد تخزّن اسم المستخدم كبريد كامل
+// (admin@rawdah.app) بينما تسجّل الدخول بالاسم المختصر (admin) — نوحّد الصيغتين
+const normUsername = (u: string) => u.toLowerCase().trim().replace(/@rawdah\.app$/, '');
+const toAuthEmail = (u: string) => {
+  const v = u.toLowerCase().trim();
+  return v.includes('@') ? v : `${v}@rawdah.app`;
+};
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
@@ -24,48 +32,85 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const profiles = DataService.getProfiles();
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage('');
 
-    setTimeout(() => {
-      const found = profiles.find(
-        p => p.username.toLowerCase() === username.toLowerCase().trim()
-      );
+    // مهلة قصيرة لإتاحة رسم حالة التحميل
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
-      if (found) {
-        if (!found.isActive) {
-          setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+    let found = DataService.getProfiles().find(
+      (p) => normUsername(p.username) === normUsername(username)
+    );
+
+    // ── 1) المصادقة الحقيقية عبر Supabase Auth (بعد تهيئة مستخدمي Auth من لوحة التحكم) ──
+    if (isSupabaseConfigured && supabase && found) {
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: toAuthEmail(username),
+          password,
+        });
+        if (!error) {
+          // جلسة مصادقة سارية الآن — مزامنة كاملة تجلب الموظفين بأحدث حالة
+          await DataService.syncFromCloud();
+          found =
+            DataService.getProfiles().find(
+              (p) => normUsername(p.username) === normUsername(username)
+            ) || found;
+          if (!found.isActive) {
+            await supabase.auth.signOut();
+            setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+            setIsLoading(false);
+            return;
+          }
+          DataService.setCurrentUser(found);
+          onLoginSuccess(found);
           setIsLoading(false);
           return;
         }
-        if (found.password && found.password !== password) {
-          setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
-          setIsLoading(false);
-          return;
-        }
-        DataService.setCurrentUser(found);
-        onLoginSuccess(found);
-      } else {
-        setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
+        // فشل المصادقة السحابية (مستخدم Auth غير مُهيأ بعد أو كلمة مرور خاطئة)
+        // → نتابع للتحقق المحلي الاحتياطي حتى لا يتعطل الدخول في فترة الانتقال
+      } catch {
+        // انقطاع شبكة أثناء المصادقة → نتابع محلياً
       }
-      setIsLoading(false);
-    }, 400);
-  };
-
-  // Quick 1-click login helper for testing permissions
-  const handleQuickRoleLogin = (role: UserRole) => {
-    setErrorMessage('');
-    const profile = profiles.find(p => p.role === role) || profiles[0];
-    if (!profile?.isActive) {
-      setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
-      return;
     }
-    DataService.setCurrentUser(profile);
-    onLoginSuccess(profile);
+
+    // ── 2) التحقق المحلي الاحتياطي (كلمات المرور المُبصمة في التخزين المحلي) ──
+    if (found) {
+      if (!found.isActive) {
+        setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+        setIsLoading(false);
+        return;
+      }
+      // بوابة أمنية: حساب من غير بصمة كلمة مرور لا يُسمح له بالدخول إطلاقاً —
+      // وإلا صار أي باسورد مقبول لو فشل الـ Auth السحابي (ثغرة تجاوز)
+      if (!found.password) {
+        setErrorMessage('هذا الحساب لا يحتوي على كلمة مرور محفوظة. تواصل مع الإدارة لإعادة تعيين كلمة المرور.');
+        setIsLoading(false);
+        return;
+      }
+      const { matches, needsMigration } = await verifyPassword(password, found.password);
+      if (!matches) {
+        setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
+        setIsLoading(false);
+        return;
+      }
+      // ترحيل تدريجي: استبدال النص الصريح القديم ببصمة مشفرة فور أول دخول ناجح
+      if (needsMigration) {
+        const upgraded = { ...found, password: await hashPassword(password) };
+        await DataService.saveProfile(upgraded);
+        DataService.setCurrentUser(upgraded);
+        onLoginSuccess(upgraded);
+        setIsLoading(false);
+        return;
+      }
+      DataService.setCurrentUser(found);
+      onLoginSuccess(found);
+    } else {
+      setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
+    }
+    setIsLoading(false);
   };
 
   return (
@@ -113,21 +158,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* بيانات الدخول التجريبية المعتمدة */}
+          {/* بيانات الدخول */}
           <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70 text-[11px] text-slate-600 space-y-1.5">
             <div className="font-bold text-emerald-900 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>بيانات الدخول التجريبية المعتمدة:</span>
+              <span>دخول آمن:</span>
             </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-slate-700" dir="ltr">
-              <span>admin / admin123</span>
-              <span>sales / sales123</span>
-              <span>inventory / inventory123</span>
-              <span>accountant / acc123</span>
-            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              أدخل اسم المستخدم وكلمة المرور المعتمدين من الإدارة. كلمات المرور مشفرة ولا تظهر لأي شخص.
+            </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={(e) => { void handleLogin(e); }} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 اسم المستخدم / البريد الإلكتروني:
@@ -184,64 +226,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               )}
             </button>
           </form>
-
-          {/* Quick Permission Testing Panel */}
-          <div className="pt-4 border-t border-slate-100 space-y-2.5">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>تجربة الدخول السريع لاختبار الصلاحيات:</span>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickRoleLogin('super_admin')}
-                className="p-2.5 rounded-xl bg-purple-50 hover:bg-purple-100/80 border border-purple-200 text-right text-xs transition-all text-purple-900 group shadow-2xs"
-              >
-                <div className="font-bold flex items-center justify-between">
-                  <span>👑 المدير العام</span>
-                  <span className="text-[10px] text-purple-700 font-bold">Admin</span>
-                </div>
-                <div className="text-[10px] text-purple-700 font-medium">كامل الصلاحيات</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickRoleLogin('sales')}
-                className="p-2.5 rounded-xl bg-sky-50 hover:bg-sky-100/80 border border-sky-200 text-right text-xs transition-all text-sky-900 group shadow-2xs"
-              >
-                <div className="font-bold flex items-center justify-between">
-                  <span>💼 موظف المبيعات</span>
-                  <span className="text-[10px] text-sky-700 font-bold">Sales</span>
-                </div>
-                <div className="text-[10px] text-sky-700 font-medium">حجز وطلبات وعملاء فقط</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickRoleLogin('inventory')}
-                className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-right text-xs transition-all text-emerald-900 group shadow-2xs"
-              >
-                <div className="font-bold flex items-center justify-between">
-                  <span>📦 مسؤول المخزون</span>
-                  <span className="text-[10px] text-emerald-700 font-bold">Inventory</span>
-                </div>
-                <div className="text-[10px] text-emerald-700 font-medium">رفع وإدارة الفترات فقط</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickRoleLogin('accountant')}
-                className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-right text-xs transition-all text-amber-900 group shadow-2xs"
-              >
-                <div className="font-bold flex items-center justify-between">
-                  <span>💳 المحاسب المالي</span>
-                  <span className="text-[10px] text-amber-700 font-bold">Accounts</span>
-                </div>
-                <div className="text-[10px] text-amber-700 font-medium">رسائل SMS والحسابات</div>
-              </button>
-            </div>
-          </div>
 
         </div>
 

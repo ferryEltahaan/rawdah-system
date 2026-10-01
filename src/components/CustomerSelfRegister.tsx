@@ -15,6 +15,7 @@ import {
   Tag
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
+import { validateWhatsappNumber } from '../utils/phoneValidation';
 import confetti from 'canvas-confetti';
 
 export const CustomerSelfRegister: React.FC = () => {
@@ -42,9 +43,20 @@ export const CustomerSelfRegister: React.FC = () => {
       return;
     }
 
-    if (!cleanedWhatsapp || cleanedWhatsapp.length < 8) {
-      setErrorMessage('يرجى إدخال رقم واتساب صحيح يبدأ بكود الدولة (مثال: +966 أو +20).');
+    const wValidation = validateWhatsappNumber(whatsappNumber);
+    if (!wValidation.valid) {
+      setErrorMessage(wValidation.error);
       return;
+    }
+
+    let normalizedAdditional: string | undefined;
+    if (additionalPhone.trim()) {
+      const aValidation = validateWhatsappNumber(additionalPhone);
+      if (!aValidation.valid) {
+        setErrorMessage('رقم الهاتف الإضافي: ' + aValidation.error);
+        return;
+      }
+      normalizedAdditional = aValidation.normalized;
     }
 
     setIsSubmitting(true);
@@ -53,8 +65,8 @@ export const CustomerSelfRegister: React.FC = () => {
       await DataService.saveCustomersBulk([
         {
           fullName: fullName.trim(),
-          whatsappNumber: cleanedWhatsapp,
-          additionalPhone: additionalPhone ? cleanPhone(additionalPhone) : undefined,
+          whatsappNumber: wValidation.normalized,
+          additionalPhone: normalizedAdditional,
           nickname: nickname.trim() || undefined,
           notes: notes.trim() ? `[تسجيل ذاتي عبر الرابط] ${notes.trim()}` : '[تسجيل ذاتي عبر رابط الواتساب]',
         }

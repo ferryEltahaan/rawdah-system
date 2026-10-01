@@ -5,6 +5,7 @@ import { Sidebar, NavTab, NAV_TAB_LABELS, getVisibleNavTabs } from './components
 import { LoginScreen } from './components/LoginScreen';
 import { ToastProvider, useToast } from './components/Toast';
 import { DataService } from './services/dataService';
+import { supabase } from './services/supabase';
 import { UserProfile, UserRole } from './types';
 
 // تحميل كسول لكل واجهات التبويبات — تقليل حجم الحزمة الأولية ورفع سرعة الإقلاع
@@ -180,6 +181,8 @@ const AppContent: React.FC = () => {
     localStorage.removeItem(SESSION_KEY); // ✅ مسح الجلسة
     setCurrentUser(null);
     setIsLoggedIn(false);
+    // إنهاء جلسة المصادقة السحابية أيضاً (لا تأثير إن لم توجد جلسة Auth)
+    supabase?.auth.signOut().catch(() => {});
   };
 
   // بوابة التنقل الموحّدة: كل محاولة لفتح شاشة غير مسموحة تُرفض مع تنبيه واضح

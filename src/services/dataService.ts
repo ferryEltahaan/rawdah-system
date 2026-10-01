@@ -8,7 +8,8 @@ import {
   CompanySettings,
   AuditLog,
   AccountProvider,
-  CurrencyCode
+  CurrencyCode,
+  OrderPayment
 } from '../types';
 import {
   initialCompanySettings,
@@ -22,6 +23,7 @@ import {
 } from './mockData';
 import { buildDemoDataset, buildDailyPaymentScenario, DailyScenarioTexts } from './demoData';
 import { accountCurrency, currencySymbol, getOrderCurrency, providerCurrency } from '../utils/currency';
+import { hashPassword, verifyPassword } from '../utils/passwordHash';
 // نستورد المتغيرات مباشرة حتى نحصل على آخر قيمة (بعد reinitSupabase)
 import * as SupabaseModule from './supabase';
 
@@ -70,6 +72,17 @@ export interface DailyPaymentSummary {
   identifiedUnmatchedMessages: SmsMessage[];
 }
 
+// صف في تقرير تحصيل آخر اليوم لكل موظف — يُحاسَب كل واحد على اللي قبضه وعلى شغله
+export interface DailyCollectorRow {
+  userId: string;
+  userName: string;
+  paymentsCount: number; // عدد عمليات السداد اللي سجّلها
+  collectedSAR: number;
+  collectedEGP: number;
+  permitsClaimed: number; // عدد التصاريح اللي سحبها
+  ordersCreated: number; // عدد الطلبات اللي أنشأها
+}
+
 export interface DailyScenarioRecord {
   createdAt: string;
   texts: DailyScenarioTexts;
@@ -86,7 +99,17 @@ const STORAGE_KEYS = {
   LOGS: 'rawdah_audit_logs',
   CURRENT_USER: 'rawdah_current_user',
   DAILY_SCENARIO: 'rawdah_daily_scenario',
+  LAST_SYNC: 'rawdah_last_cloud_sync',
 };
+
+function touchLastSync() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+    window.dispatchEvent(new Event('rawdah_storage_update'));
+  } catch {
+    /* تجاهل — المؤشر فقط وليس بيانات حرجة */
+  }
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -181,9 +204,9 @@ const PROVIDER_SENDER_NAMES: Record<AccountProvider, string> = {
   other: 'SMS',
 };
 
-// أعمدة العملة/الأرشفة قد لا تكون مضافة بعد في جدول sales_orders السحابي —
+// أعمدة العملة/الأرشفة/تقسيم ذكر-أنثى قد لا تكون مضافة بعد في جدول sales_orders السحابي —
 // نجرّب معها أولاً، وعند فشل الإدراج/التحديث نعيد المحاولة بدونها حتى لا يفشل الحفظ كلياً
-const NEW_ORDER_COLUMNS = ['currency', 'is_archived', 'archived_at'];
+const NEW_ORDER_COLUMNS = ['currency', 'is_archived', 'archived_at', 'permits_count_male', 'permits_count_female'];
 
 async function cloudInsertOrderResilient(payload: Record<string, any>): Promise<void> {
   if (!getIsConfigured() || !getSupabase()) return;
@@ -344,7 +367,8 @@ export class DataService {
           totalSpent: parseFloat(c.total_spent || '0'),
           createdAt: c.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts);
+        // بعد تقفيل RLS تصبح القراءة المجهولة (قبل تسجيل الدخول) فاضية — لا تُمسح القوائم المحلية بنتيجة صفرية
+        if (mappedCusts.length > 0) saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts);
       }
 
       // 3. Sync Permits
@@ -367,7 +391,7 @@ export class DataService {
           notes: p.notes,
           createdAt: p.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits);
+        if (mappedPermits.length > 0) saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits);
       }
 
       // 4. Sync Orders
@@ -401,6 +425,9 @@ export class DataService {
             customerName: cust?.fullName || o.customer_name || '',
             customerWhatsapp: cust?.whatsappNumber || o.customer_whatsapp || '',
             permitsCount: o.permits_count,
+            // التقسيم ذكر/أنثى — يُقرأ من العمود السحابي، ومع غيبه (عمود غير مضاف بعد) يُؤخَذ من المحلي
+            permitsCountMale: o.permits_count_male ?? local?.permitsCountMale,
+            permitsCountFemale: o.permits_count_female ?? local?.permitsCountFemale,
             targetDate: o.target_date,
             targetTime: o.target_time,
             orderType: o.order_type,
@@ -413,13 +440,16 @@ export class DataService {
             currency: o.currency || local?.currency || 'SAR',
             isArchived: o.is_archived ?? local?.isArchived ?? false,
             archivedAt: o.archived_at || local?.archivedAt || undefined,
+            // سجل السدادات + آخر تذكير — أعمدة اختيارية، ومع غيابها تُؤخَذ من النسخة المحلية
+            payments: Array.isArray(o.payments) ? o.payments : local?.payments,
+            lastReminderAt: o.last_reminder_at || local?.lastReminderAt || undefined,
             notes: o.notes,
             createdBy: o.created_by || '',
             assignedPermitIds: linksByOrder[o.id] || undefined,
             createdAt: o.created_at,
           };
         });
-        saveToStorage(STORAGE_KEYS.ORDERS, mappedOrders);
+        if (mappedOrders.length > 0) saveToStorage(STORAGE_KEYS.ORDERS, mappedOrders);
       }
 
       // 5. Sync SMS Messages
@@ -440,7 +470,7 @@ export class DataService {
           matchedAt: s.matched_at,
           receivedAt: s.received_at,
         }));
-        saveToStorage(STORAGE_KEYS.SMS, mappedSms);
+        if (mappedSms.length > 0) saveToStorage(STORAGE_KEYS.SMS, mappedSms);
       }
 
       // 6. Sync Profiles (لا نستبدل المحلي إلا إذا كانت السحابة تحتوي بيانات فعلية)
@@ -532,7 +562,7 @@ export class DataService {
           notes: a.notes || undefined,
           createdAt: a.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.ACCOUNTS, mappedAccounts);
+        if (mappedAccounts.length > 0) saveToStorage(STORAGE_KEYS.ACCOUNTS, mappedAccounts);
       }
 
       // 8. Sync Audit Logs (آخر 500 سجل فقط — جدول السحابة لا يخزن اسم المستخدم، نسترجعه من الملفات)
@@ -542,11 +572,12 @@ export class DataService {
         this.getProfiles().forEach(p => { nameMap[p.id] = p.fullName; });
 
         const mappedLogs: AuditLog[] = logList.map(l => {
-          const { userName: detailsUserName, ...restDetails } = l.details || {};
+          const { userName: detailsUserName, userId: detailsUserId, ...restDetails } = l.details || {};
+          const resolvedName = l.user_name || detailsUserName || nameMap[l.user_id] || '';
           return {
             id: l.id,
-            userId: l.user_id || '',
-            userName: l.user_name || detailsUserName || nameMap[l.user_id] || '',
+            userId: this.resolveLogUserId(l.user_id || detailsUserId || '', resolvedName),
+            userName: resolvedName,
             actionType: l.action_type,
             entityName: l.entity_name,
             entityId: l.entity_id || '',
@@ -561,9 +592,10 @@ export class DataService {
         const merged = [...localOnlyLogs, ...mappedLogs]
           .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
           .slice(0, 500);
-        saveToStorage(STORAGE_KEYS.LOGS, merged);
+        if (mappedLogs.length > 0) saveToStorage(STORAGE_KEYS.LOGS, merged);
       }
 
+      touchLastSync();
       console.log('✅ Supabase Cloud Data synchronized successfully!');
     } catch (e) {
       console.error('Failed to sync from cloud:', e);
@@ -575,13 +607,28 @@ export class DataService {
     if (!getIsConfigured() || !getSupabase()) return () => {};
     const sb = getSupabase()!;
 
-    const channel = sb
-      .channel('public:system_realtime_stream')
-      // 1. استقبال رسائل الـ SMS اللحظية
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'sms_messages' },
-        async (payload) => {
+    // Realtime: قناة مستقلة لكل جدول — دمج عدة فلاتر في قناة واحدة لا تصلها الأحداث
+    // على خادم البث الحالي (جرّبنا 8 فلاتر في قناة واحدة فأصبحت SUBSCRIBED بلا أحداث).
+    const channels: any[] = [];
+    const subscribeTable = (table: string, event: 'INSERT' | '*', handler: (payload: any) => void) => {
+      const wrappedHandler = (payload: any) => {
+        touchLastSync();
+        handler(payload);
+      };
+      const ch = sb
+        .channel(`public:${table}`)
+        .on('postgres_changes', { event, schema: 'public', table }, wrappedHandler)
+        .subscribe((status: any, err?: any) => {
+          console.log(`⚡ Realtime[${table}] status:`, status, err ? err : '');
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn(`⚠️ Realtime[${table}] فشل الاشتراك — تأكد من إضافة الجدول للـ Realtime Publication في لوحة Supabase.`);
+          }
+        });
+      channels.push(ch);
+    };
+
+    // 1. استقبال رسائل الـ SMS اللحظية
+    subscribeTable('sms_messages', 'INSERT', async (payload) => {
           const newRow = payload.new as any;
           if (!newRow || !newRow.id) return;
           console.log('⚡ SMS Realtime received from phone forwarder:', newRow);
@@ -610,13 +657,14 @@ export class DataService {
             window.dispatchEvent(new Event('rawdah_storage_update'));
           }
         }
-      )
-      // 2. استقبال العملاء المسجلين ذاتياً أو المحدثين لحظياً
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'customers' },
-        (payload) => {
-          const row = (payload.new || payload.old) as any;
+    );
+
+    // 2. استقبال العملاء المسجلين ذاتياً أو المحدثين لحظياً
+    subscribeTable('customers', '*', (payload) => {
+          // في أحداث DELETE يكون payload.new = {} (كائن فارغ وليس null)،
+          // لذا (payload.new || payload.old) تُرجع الكائن الفارغ ويُلغي الحدث بالخطأ.
+          // نستخدم payload.old للحذف لأنها تحوي الصف المحذوف (مفتاحه الأساسي على الأقل).
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
           if (!row || !row.id) return;
           console.log('⚡ Customer Realtime event received:', payload.eventType, row);
 
@@ -648,13 +696,14 @@ export class DataService {
           }
           window.dispatchEvent(new Event('rawdah_storage_update'));
         }
-      )
-      // 3. استقبال تحديثات الطلبات لحظياً
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sales_orders' },
-        (payload) => {
-          const row = (payload.new || payload.old) as any;
+    );
+
+    // 3. استقبال تحديثات الطلبات لحظياً
+    subscribeTable('sales_orders', '*', (payload) => {
+          // في أحداث DELETE يكون payload.new = {} (كائن فارغ وليس null)،
+          // لذا (payload.new || payload.old) تُرجع الكائن الفارغ ويُلغي الحدث بالخطأ.
+          // نستخدم payload.old للحذف لأنها تحوي الصف المحذوف (مفتاحه الأساسي على الأقل).
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
           if (!row || !row.id) return;
           console.log('⚡ Order Realtime event received:', payload.eventType, row);
 
@@ -663,6 +712,8 @@ export class DataService {
             const filtered = currentOrders.filter(o => o.id !== row.id);
             saveToStorage(STORAGE_KEYS.ORDERS, filtered);
           } else {
+            // التقسيم ذكر/أنثى — يُقرأ من العمود السحابي، ومع غيبه يُؤخَذ من المحلي
+            const local = currentOrders.find(o => o.id === row.id);
             const mappedOrder: SalesOrder = {
               id: row.id,
               orderNumber: row.order_number,
@@ -670,6 +721,8 @@ export class DataService {
               customerName: row.customer_name || '',
               customerWhatsapp: row.customer_whatsapp || '',
               permitsCount: row.permits_count,
+              permitsCountMale: row.permits_count_male ?? local?.permitsCountMale,
+              permitsCountFemale: row.permits_count_female ?? local?.permitsCountFemale,
               targetDate: row.target_date,
               targetTime: row.target_time,
               orderType: row.order_type,
@@ -697,17 +750,205 @@ export class DataService {
           }
           window.dispatchEvent(new Event('rawdah_storage_update'));
         }
-      )
-      .subscribe();
+    );
+
+    // 4. استقبال تحديثات التصاريح لحظياً (سحب/إرجاع/رفع صورة)
+    subscribeTable('permits', '*', (payload) => {
+          // في أحداث DELETE يكون payload.new = {} (كائن فارغ وليس null)،
+          // لذا (payload.new || payload.old) تُرجع الكائن الفارغ ويُلغي الحدث بالخطأ.
+          // نستخدم payload.old للحذف لأنها تحوي الصف المحذوف (مفتاحه الأساسي على الأقل).
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Permit Realtime event received:', payload.eventType, row);
+
+          const currentPermits = DataService.getPermits();
+          if (payload.eventType === 'DELETE') {
+            const filtered = currentPermits.filter(p => p.id !== row.id);
+            saveToStorage(STORAGE_KEYS.PERMITS, filtered);
+          } else {
+            const mapped: Permit = {
+              id: row.id,
+              permitCode: row.permit_code,
+              slotDate: row.slot_date,
+              slotHour: row.slot_hour,
+              slotMinute: row.slot_minute,
+              slotFormatted: row.slot_formatted || `${String(row.slot_hour).padStart(2, '0')}:${String(row.slot_minute).padStart(2, '0')}`,
+              imageUrl: row.image_url,
+              status: row.status,
+              assignedToCustomerId: row.assigned_to_customer_id,
+              assignedCustomerName: row.assigned_customer_name,
+              assignedByUserId: row.assigned_by_user_id,
+              assignedByUserName: row.assigned_by_user_name,
+              assignedAt: row.assigned_at,
+              notes: row.notes,
+              createdAt: row.created_at,
+            };
+
+            const idx = currentPermits.findIndex(p => p.id === mapped.id);
+            if (idx >= 0) {
+              currentPermits[idx] = { ...currentPermits[idx], ...mapped };
+            } else {
+              currentPermits.unshift(mapped);
+            }
+            saveToStorage(STORAGE_KEYS.PERMITS, currentPermits);
+            window.dispatchEvent(new CustomEvent('rawdah_permit_update', { detail: mapped }));
+          }
+          window.dispatchEvent(new Event('rawdah_storage_update'));
+        }
+    );
+
+    // 5. استقبال تحديثات أرصدة الحسابات المالية لحظياً
+    subscribeTable('financial_accounts', '*', (payload) => {
+          // في أحداث DELETE يكون payload.new = {} (كائن فارغ وليس null)،
+          // لذا (payload.new || payload.old) تُرجع الكائن الفارغ ويُلغي الحدث بالخطأ.
+          // نستخدم payload.old للحذف لأنها تحوي الصف المحذوف (مفتاحه الأساسي على الأقل).
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Financial account Realtime event received:', payload.eventType, row);
+
+          const currentAccs = DataService.getFinancialAccounts();
+          if (payload.eventType === 'DELETE') {
+            const filtered = currentAccs.filter(a => a.id !== row.id);
+            saveToStorage(STORAGE_KEYS.ACCOUNTS, filtered);
+          } else {
+            const local = currentAccs.find(a => a.id === row.id);
+            const mapped: FinancialAccount = {
+              id: row.id,
+              type: row.type,
+              provider: row.provider,
+              currency: row.currency || local?.currency || undefined,
+              accountName: row.account_name,
+              accountNumber: row.account_number,
+              accountHolderName: row.account_holder_name || undefined,
+              iban: row.iban || undefined,
+              branchName: row.branch_name || undefined,
+              currentBalance: parseFloat(row.current_balance || '0'),
+              isActive: row.is_active ?? true,
+              notes: row.notes || undefined,
+              createdAt: row.created_at,
+            };
+
+            const idx = currentAccs.findIndex(a => a.id === mapped.id);
+            if (idx >= 0) {
+              currentAccs[idx] = { ...currentAccs[idx], ...mapped };
+            } else {
+              currentAccs.push(mapped);
+            }
+            saveToStorage(STORAGE_KEYS.ACCOUNTS, currentAccs);
+          }
+          window.dispatchEvent(new Event('rawdah_storage_update'));
+        }
+    );
+
+    // 6. استقبال تحديثات بيانات الموظفين لحظياً (كلمات المرور محلية فقط فلا تأتي من السحابة)
+    subscribeTable('profiles', '*', (payload) => {
+          // في أحداث DELETE يكون payload.new = {} (كائن فارغ وليس null)،
+          // لذا (payload.new || payload.old) تُرجع الكائن الفارغ ويُلغي الحدث بالخطأ.
+          // نستخدم payload.old للحذف لأنها تحوي الصف المحذوف (مفتاحه الأساسي على الأقل).
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Profile Realtime event received:', payload.eventType, row);
+
+          const currentProfiles = DataService.getProfiles();
+          if (payload.eventType === 'DELETE') {
+            // لا نحذف المستخدم الحالي من جهازه — يسجل خروج يدوي إذا لزم
+            const filtered = currentProfiles.filter(p => p.id !== row.id);
+            saveToStorage(STORAGE_KEYS.PROFILES, filtered);
+          } else {
+            const local = currentProfiles.find(p => p.id === row.id);
+            const mapped: UserProfile = {
+              id: row.id,
+              fullName: row.full_name,
+              username: row.username || '',
+              password: local?.password || '',
+              phoneNumber: row.phone_number || '',
+              whatsappNumber: row.whatsapp_number || '',
+              role: row.role,
+              isActive: row.is_active ?? true,
+              avatarUrl: row.avatar_url || undefined,
+              customPermissions: row.custom_permissions || { view: true, create: true, edit: true, delete: false, reports: false },
+              createdAt: row.created_at,
+            };
+
+            const idx = currentProfiles.findIndex(p => p.id === mapped.id);
+            if (idx >= 0) {
+              currentProfiles[idx] = { ...currentProfiles[idx], ...mapped };
+            } else {
+              currentProfiles.push(mapped);
+            }
+            saveToStorage(STORAGE_KEYS.PROFILES, currentProfiles);
+          }
+          window.dispatchEvent(new Event('rawdah_storage_update'));
+        }
+    );
+
+    // 7. استقبال تغييرات إعدادات الشركة لحظياً
+    subscribeTable('company_settings', '*', (payload) => {
+          const row = payload.new as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Company settings Realtime event received:', payload.eventType, row);
+
+          const mapped: CompanySettings = {
+            id: row.id,
+            companyNameAr: row.company_name_ar || '',
+            companyNameEn: row.company_name_en || '',
+            address: row.address || '',
+            primaryPhone: row.primary_phone || '',
+            secondaryPhone: row.secondary_phone || '',
+            whatsappNumber: row.whatsapp_number || '',
+            email: row.email || '',
+            logoUrl: row.logo_url || '',
+            taxNumber: row.tax_number || '',
+            commercialRegistry: row.commercial_registry || '',
+            invoiceFooterNote: row.invoice_footer_note || '',
+            currency: row.currency || 'SAR',
+          };
+          saveToStorage(STORAGE_KEYS.SETTINGS, mapped);
+          window.dispatchEvent(new Event('rawdah_storage_update'));
+        }
+    );
+
+    // 8. استقبال سجلات التدقيق اللحظية (إدراج فقط — الجدول append-only)
+    subscribeTable('audit_logs', 'INSERT', (payload) => {
+          const row = payload.new as any;
+          if (!row || !row.id) return;
+          console.log('⚡ Audit log Realtime event received:', row);
+
+          const currentLogs = DataService.getAuditLogs();
+          if (!currentLogs.some(l => l.id === row.id)) {
+            const nameMap: Record<string, string> = {};
+            DataService.getProfiles().forEach(p => { nameMap[p.id] = p.fullName; });
+            const { userName: detailsUserName, ...restDetails } = row.details || {};
+            const mapped: AuditLog = {
+              id: row.id,
+              userId: row.user_id || '',
+              userName: row.user_name || detailsUserName || nameMap[row.user_id] || '',
+              actionType: row.action_type,
+              entityName: row.entity_name,
+              entityId: row.entity_id || '',
+              details: restDetails,
+              createdAt: row.created_at,
+            };
+            currentLogs.unshift(mapped);
+            saveToStorage(STORAGE_KEYS.LOGS, currentLogs.slice(0, 500));
+            window.dispatchEvent(new Event('rawdah_storage_update'));
+          }
+        }
+    );
 
     return () => {
-      sb.removeChannel(channel);
+      channels.forEach(ch => sb.removeChannel(ch));
     };
   }
 
   // --- Company Settings ---
   static getCompanySettings(): CompanySettings {
     return loadFromStorage(STORAGE_KEYS.SETTINGS, initialCompanySettings);
+  }
+
+  /** آخر مرة وصلت فيها بيانات من السحابة (مزامنة يدوية أو حدث لحظي) */
+  static getLastCloudSync(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
   }
 
   static async updateCompanySettings(settings: Partial<CompanySettings>): Promise<{ settings: CompanySettings; localSaved: boolean }> {
@@ -979,12 +1220,29 @@ export class DataService {
     const currentUser = this.getCurrentUser();
     const stored = this.getProfiles().find(p => p.id === currentUser.id);
 
-    if (!stored || !stored.password || stored.password !== currentPassword) {
+    if (!stored || !stored.password) {
       return { success: false, error: 'wrong_current' };
     }
 
-    const { profile, localSaved } = await this.saveProfile({ ...stored, password: newPassword });
+    const { matches } = await verifyPassword(currentPassword, stored.password);
+    if (!matches) {
+      return { success: false, error: 'wrong_current' };
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    const { profile, localSaved } = await this.saveProfile({ ...stored, password: newPasswordHash });
     if (!localSaved) return { success: false, error: 'local_save_failed' };
+
+    // تحديث كلمة المرور في Supabase Auth أيضاً — يعمل فقط عند وجود جلسة مصادقة حقيقية
+    // (الدخول الاحتياطي المحلي قبل تهيئة مستخدمي Auth لا يملك جلسة، فنتجاهل الفشل بصمت)
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        const { error: authErr } = await getSupabase()!.auth.updateUser({ password: newPassword });
+        if (authErr) console.warn('⚠️ تعذر تحديث كلمة المرور في Supabase Auth (لا توجد جلسة مصادقة على الأرجح):', authErr.message);
+      } catch (e) {
+        console.warn('⚠️ استثناء أثناء تحديث كلمة المرور في Supabase Auth:', e);
+      }
+    }
 
     this.setCurrentUser(profile);
 
@@ -1575,6 +1833,8 @@ export class DataService {
       customer_name: newOrder.customerName,
       customer_whatsapp: newOrder.customerWhatsapp,
       permits_count: newOrder.permitsCount,
+      permits_count_male: newOrder.permitsCountMale ?? null,
+      permits_count_female: newOrder.permitsCountFemale ?? null,
       target_date: newOrder.targetDate,
       target_time: newOrder.targetTime,
       order_type: newOrder.orderType,
@@ -1602,20 +1862,74 @@ export class DataService {
     return newOrder;
   }
 
-  static updateOrderStatus(orderId: string, status: SalesOrder['orderStatus']): void {
+  /** يُرجع عدد التصاريح التي أُرجعت للمخزون عند الإلغاء (صفر في غير الإلغاء) */
+  static updateOrderStatus(orderId: string, status: SalesOrder['orderStatus']): number {
     const orders = this.getOrders();
     const order = orders.find(o => o.id === orderId);
-    if (order) {
-      order.orderStatus = status;
-      saveToStorage(STORAGE_KEYS.ORDERS, orders);
-      this.addAuditLog(this.getCurrentUser().id, this.getCurrentUser().fullName, 'UPDATE_ORDER', 'sales_orders', orderId, { status });
-      // Cloud update
+    if (!order) return 0;
+
+    // إلغاء الطلب يُرجع كل تصاريحه للمخزون تلقائياً — وإلا تبقى محجوزة بلا طلب وتضيع من البيع
+    let releasedCount = 0;
+    if (status === 'cancelled' && order.orderStatus !== 'cancelled') {
+      const assignedIds = order.assignedPermitIds || [];
+      if (assignedIds.length > 0) {
+        const permits = this.getPermits();
+        let permitsChanged = false;
+        for (const pid of assignedIds) {
+          const permit = permits.find(p => p.id === pid);
+          if (permit && (permit.status === 'assigned' || permit.status === 'locked')) {
+            permit.status = 'available';
+            permit.assignedToCustomerId = undefined;
+            permit.assignedCustomerName = undefined;
+            permit.assignedByUserId = undefined;
+            permit.assignedByUserName = undefined;
+            permit.assignedAt = undefined;
+            permitsChanged = true;
+            releasedCount += 1;
+          }
+        }
+        if (permitsChanged) saveToStorage(STORAGE_KEYS.PERMITS, permits);
+      }
+
+      const orderIndex = orders.findIndex(o => o.id === orderId);
+      orders[orderIndex] = { ...orders[orderIndex], assignedPermitIds: [] };
+
       if (getIsConfigured() && getSupabase()) {
-        getSupabase()!.from('sales_orders').update({ order_status: status }).eq('id', orderId).then(({ error }) => {
-          if (error) console.error('Cloud updateOrderStatus error:', error);
+        const sb = getSupabase()!;
+        if (assignedIds.length > 0) {
+          sb.from('permits').update({
+            status: 'available',
+            assigned_to_customer_id: null,
+            assigned_customer_name: null,
+            assigned_by_user_id: null,
+            assigned_by_user_name: null,
+            assigned_at: null,
+          }).in('id', assignedIds).then(({ error }) => {
+            if (error) console.error('Cloud cancel-release permits error:', error);
+          });
+        }
+        sb.from('order_permits').delete().eq('order_id', orderId).then(({ error }) => {
+          if (error) console.error('Cloud cancel-unlink order_permits error:', error);
         });
       }
     }
+
+    saveToStorage(STORAGE_KEYS.ORDERS, orders);
+    this.addAuditLog(
+      this.getCurrentUser().id,
+      this.getCurrentUser().fullName,
+      'UPDATE_ORDER',
+      'sales_orders',
+      orderId,
+      releasedCount > 0 ? { status, releasedPermits: releasedCount } : { status }
+    );
+    // Cloud update
+    if (getIsConfigured() && getSupabase()) {
+      getSupabase()!.from('sales_orders').update({ order_status: status }).eq('id', orderId).then(({ error }) => {
+        if (error) console.error('Cloud updateOrderStatus error:', error);
+      });
+    }
+    return releasedCount;
   }
 
   static updateDeliveryStatus(orderId: string, deliveryStatus: SalesOrder['deliveryStatus']): void {
@@ -1985,6 +2299,74 @@ export class DataService {
     };
   }
 
+  // --- التقرير اليومي للمالك (يُرسل على الواتساب آخر كل يوم) ---
+  static buildOwnerDailyReport(date: string = riyadhToday()): { text: string } {
+    const settings = this.getCompanySettings();
+    const orders = this.getOrders();
+    const permits = this.getPermits();
+
+    const nowHm = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date());
+    const weekday = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Riyadh', weekday: 'long' });
+
+    const todayOrders = orders.filter((o) => o.targetDate === date && o.orderStatus !== 'cancelled');
+    const todayPermits = todayOrders.reduce((s, o) => s + (o.permitsCount || 0), 0);
+    const maleCount = todayOrders.reduce((s, o) => s + (o.permitsCountMale || 0), 0);
+    const femaleCount = todayOrders.reduce((s, o) => s + (o.permitsCountFemale || 0), 0);
+
+    // تحصيل اليوم = إجمالي ما قُبض اليوم (سداد مباشر + رسائل مطابقة) — من تقرير المحصّلين
+    const collectors = this.getDailyCollectorReport(date);
+    const collected = { SAR: 0, EGP: 0 };
+    collectors.forEach((c) => { collected.SAR += c.collectedSAR; collected.EGP += c.collectedEGP; });
+
+    const overdue = orders
+      .filter((o) => !o.isArchived && o.orderStatus !== 'cancelled' && o.remainingAmount > 0 && o.targetDate < date)
+      .sort((a, b) => (a.targetDate > b.targetDate ? 1 : -1));
+    const overdueShown = overdue.slice(0, 8);
+
+    const availablePermits = permits.filter((p) => p.status === 'available').length;
+
+    const fmtCur = (v: number, cur: string) => `${v.toLocaleString('en-US')} ${cur === 'EGP' ? 'ج.م' : 'ر.س'}`;
+    const lines: string[] = [];
+    lines.push(`🕌 *التقرير اليومي — ${settings.companyNameAr || 'مؤسسة حجز تصاريح الروضة'}*`);
+    lines.push(`📅 ${date} (${weekday}) — الساعة ${nowHm} بتوقيت الرياض`);
+    lines.push('');
+    const genderNote = maleCount + femaleCount > 0 ? ` (رجال ${maleCount} / نساء ${femaleCount})` : '';
+    lines.push(`📦 *حجز اليوم:* ${todayOrders.length} طلب — ${todayPermits} تصريح${genderNote}`);
+    const collectedParts: string[] = [];
+    if (collected.SAR > 0) collectedParts.push(fmtCur(collected.SAR, 'SAR'));
+    if (collected.EGP > 0) collectedParts.push(fmtCur(collected.EGP, 'EGP'));
+    lines.push(`💰 *تحصيل اليوم:* ${collectedParts.length ? collectedParts.join(' + ') : 'لا تحصيلات مسجلة بعد'}`);
+
+    // تحصيل اليوم لكل موظف — المالك يحاسب كل واحد على اللي قبضه وعلى شغله
+    if (collectors.length > 0) {
+      lines.push('🧑‍💼 *تحصيل الفريق اليوم:*');
+      collectors.forEach(c => {
+        const parts: string[] = [];
+        if (c.collectedSAR > 0) parts.push(`${c.collectedSAR.toLocaleString('en-US')} ر.س`);
+        if (c.collectedEGP > 0) parts.push(`${c.collectedEGP.toLocaleString('en-US')} ج.م`);
+        const money = parts.length ? parts.join(' + ') : 'بدون تحصيل نقدي';
+        lines.push(`   • ${c.userName}: ${c.paymentsCount} عملية سداد — ${money} — سحب ${c.permitsClaimed} تصريح`);
+      });
+    }
+    lines.push(`⚠️ *متأخرات السداد:* ${overdue.length} طلب`);
+    overdueShown.forEach((o) =>
+      lines.push(`   • طلب #${o.orderNumber} — ${o.customerName} — ${fmtCur(o.remainingAmount, getOrderCurrency(o))}`)
+    );
+    if (overdue.length > overdueShown.length) lines.push(`   • و${overdue.length - overdueShown.length} طلبات أخرى`);
+    lines.push(`🎫 *تصاريح متاحة في المخزون:* ${availablePermits} من ${permits.length}`);
+    return { text: lines.join('\n') };
+  }
+
+  /** رابط إرسال التقرير للمالك على واتساب — null إذا لم يُضف رقم واتساب للشركة */
+  static getOwnerReportWhatsappUrl(date: string = riyadhToday()): string | null {
+    const owner = this.getCompanySettings().whatsappNumber?.replace(/[^0-9]/g, '');
+    if (!owner) return null;
+    const { text } = this.buildOwnerDailyReport(date);
+    return `https://wa.me/${owner}?text=${encodeURIComponent(text)}`;
+  }
+
   // --- السيناريو التجريبي للسداد اليومي ---
   static getDailyScenarioTexts(): DailyScenarioTexts | null {
     const rec = loadFromStorage<DailyScenarioRecord | null>(STORAGE_KEYS.DAILY_SCENARIO, null);
@@ -2145,6 +2527,16 @@ export class DataService {
     if (order.paidAmount >= order.totalAmount) {
       order.orderStatus = 'confirmed';
     }
+    // تسجيل السداد في سجل الطلب — مطابقات SMS بتُحسب للموظف اللي طابقها
+    order.payments = [...(order.payments || []), {
+      id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      amount: sms.parsedAmount || 0,
+      method: 'sms',
+      byUserId: currentUser.id,
+      byUserName: currentUser.fullName,
+      at: new Date().toISOString(),
+      note: sms.parsedReferenceId ? `تحويل ${sms.parsedReferenceId}` : undefined,
+    } as OrderPayment];
     saveToStorage(STORAGE_KEYS.ORDERS, orders);
 
     const accounts = this.getFinancialAccounts();
@@ -2203,6 +2595,7 @@ export class DataService {
           paid_amount: order.paidAmount,
           remaining_amount: order.remainingAmount,
           order_status: order.orderStatus,
+          payments: order.payments || [],
         }).eq('id', orderId);
         if (orderErr) console.error('Cloud order payment update error:', orderErr);
       } catch (e) {
@@ -2217,6 +2610,143 @@ export class DataService {
       orderNumber: order.orderNumber,
       currencyWarning,
     };
+  }
+
+  // تسجيل سداد يدوي مباشر (زر "تم السداد") — يُسجّل باسم الموظف اللي ضغط عشان يتحاسب عليه آخر اليوم
+  static async addOrderPayment(
+    orderId: string,
+    amount: number,
+    note?: string
+  ): Promise<{ success: boolean; message: string; orderNumber?: number }> {
+    const currentUser = this.getCurrentUser();
+    const orders = this.getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return { success: false, message: 'الطلب غير موجود.' };
+
+    const cur = getOrderCurrency(order);
+    const remaining = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
+    const amountNum = Math.round(Math.max(0, Number(amount) || 0) * 100) / 100;
+    if (amountNum <= 0) return { success: false, message: 'يرجى إدخال مبلغ سداد صحيح أكبر من صفر.' };
+    if (amountNum > remaining + 0.001) {
+      return { success: false, message: `المبلغ المُدخل أكبر من المتبقي (${remaining} ${currencySymbol(cur)}).` };
+    }
+
+    const payment: OrderPayment = {
+      id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      amount: amountNum,
+      method: 'manual',
+      byUserId: currentUser.id,
+      byUserName: currentUser.fullName,
+      at: new Date().toISOString(),
+      note: note?.trim() || undefined,
+    };
+
+    order.paidAmount = Math.round((order.paidAmount + amountNum) * 100) / 100;
+    order.remainingAmount = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
+    if (order.paidAmount >= order.totalAmount && order.totalAmount > 0) {
+      order.orderStatus = 'confirmed';
+    }
+    order.payments = [...(order.payments || []), payment];
+    saveToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    this.addAuditLog(
+      currentUser.id,
+      currentUser.fullName,
+      'RECORD_PAYMENT',
+      'sales_orders',
+      orderId,
+      { orderNumber: order.orderNumber, amount: amountNum, method: 'manual', customerName: order.customerName }
+    );
+
+    if (getIsConfigured() && getSupabase()) {
+      getSupabase()!.from('sales_orders').update({
+        paid_amount: order.paidAmount,
+        remaining_amount: order.remainingAmount,
+        order_status: order.orderStatus,
+        payments: order.payments,
+      }).eq('id', orderId).then(({ error }) => {
+        if (error) console.error('Cloud addOrderPayment error:', error);
+      });
+    }
+
+    const fullyPaid = order.remainingAmount <= 0;
+    return {
+      success: true,
+      orderNumber: order.orderNumber,
+      message: fullyPaid
+        ? `✅ تم تسجيل سداد ${amountNum} ${currencySymbol(cur)} للطلب #${order.orderNumber} باسم ${currentUser.fullName} — اكتمل السداد.`
+        : `✅ تم تسجيل سداد ${amountNum} ${currencySymbol(cur)} للطلب #${order.orderNumber} باسم ${currentUser.fullName} — المتبقي ${order.remainingAmount} ${currencySymbol(cur)}.`,
+    };
+  }
+
+  // تسجيل آخر تذكير سداد أُرسل للعميل — يعرف المالك والموظف مين تابع ومتى
+  static recordPaymentReminder(orderId: string): string | null {
+    const orders = this.getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return null;
+    const now = new Date().toISOString();
+    order.lastReminderAt = now;
+    saveToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    const currentUser = this.getCurrentUser();
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'SEND_REMINDER', 'sales_orders', orderId, {
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      remaining: order.remainingAmount,
+    });
+
+    if (getIsConfigured() && getSupabase()) {
+      getSupabase()!.from('sales_orders').update({ last_reminder_at: now }).eq('id', orderId).then(({ error }) => {
+        if (error) console.error('Cloud recordPaymentReminder error:', error);
+      });
+    }
+    return now;
+  }
+
+  // تقرير تحصيل اليوم لكل موظف — مين قبض كام وعمل كام عملية، عشان المالك يحاسبهم آخر اليوم
+  static getDailyCollectorReport(date: string = riyadhToday()): DailyCollectorRow[] {
+    const rowsMap = new Map<string, DailyCollectorRow>();
+    const ensureRow = (userId: string, userName: string): DailyCollectorRow => {
+      let row = rowsMap.get(userId);
+      if (!row) {
+        row = { userId, userName, paymentsCount: 0, collectedSAR: 0, collectedEGP: 0, permitsClaimed: 0, ordersCreated: 0 };
+        rowsMap.set(userId, row);
+      }
+      return row;
+    };
+
+    // 1) السدادات المسجلة اليوم (يدوي + مطابقات SMS) — اللي قبضه كل موظف
+    this.getOrders().forEach(o => {
+      (o.payments || []).forEach(p => {
+        if (riyadhDateOfIso(p.at) !== date) return;
+        const row = ensureRow(p.byUserId, p.byUserName);
+        row.paymentsCount += 1;
+        if (getOrderCurrency(o) === 'EGP') row.collectedEGP += p.amount;
+        else row.collectedSAR += p.amount;
+      });
+    });
+
+    // 2) سجل الحركات — التصاريح المسحوبة والطلبات المنشأة اليوم لكل موظف
+    this.getAuditLogs().forEach(l => {
+      if (riyadhDateOfIso(l.createdAt) !== date) return;
+      const row = ensureRow(this.resolveLogUserId(l.userId, l.userName), l.userName);
+      if (l.actionType === 'CLAIM_PERMIT') row.permitsClaimed += 1;
+      if (l.actionType === 'CREATE_ORDER') row.ordersCreated += 1;
+    });
+
+    // الأعلى تحصيلاً أولاً
+    return [...rowsMap.values()].sort(
+      (a, b) => (b.collectedSAR + b.collectedEGP) - (a.collectedSAR + a.collectedEGP)
+    );
+  }
+
+  // مطابقة سجل التدقيق بالمستخدم الصحيح — السحابة ترجع user_id فارغ (قيد FK)،
+  // فنعوّضه بالاسم من الملفات المحلية لكي يظل تقرير تحصيل كل موظف موحّداً بدلاً من صفين لنفس الشخص
+  private static resolveLogUserId(userId: string, userName: string): string {
+    if (userId && userId.trim() !== '') return userId;
+    if (!userName) return '';
+    const match = this.getProfiles().find(p => p.fullName === userName);
+    return match ? match.id : '';
   }
 
   static getAuditLogs(): AuditLog[] {
@@ -2257,7 +2787,7 @@ export class DataService {
           action_type: actionType,
           entity_name: entityName,
           entity_id: entityId,
-          details: { ...details, userName },
+          details: { ...details, userName, userId },
         }).then(({ error }) => {
           if (error) console.error('Cloud audit log insert error:', error);
         });

@@ -1,0 +1,3 @@
+Contact: mailto:security@rawdah.example
+Expires: 2027-09-29T00:00:00.000Z
+Preferred-Languages: ar, en

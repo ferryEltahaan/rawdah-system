@@ -1,17 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Ticket, 
-  ShoppingBag, 
-  MessageSquareCode, 
-  TrendingUp, 
-  Clock, 
-  ArrowUpRight, 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Ticket,
+  ShoppingBag,
+  MessageSquareCode,
+  TrendingUp,
+  Clock,
+  ArrowUpRight,
   Sparkles,
-  Zap
+  Zap,
+  Send,
+  Copy,
+  FileText,
+  Banknote,
+  Bell
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import { currencySymbol, getOrderCurrency } from '../utils/currency';
-import { UserProfile } from '../types';
+import { UserProfile, SalesOrder } from '../types';
+import { useToast } from './Toast';
 
 interface DashboardProps {
   currentUser: UserProfile;
@@ -19,6 +25,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate }) => {
+  const toast = useToast();
   const [permits, setPermits] = useState(DataService.getPermits());
   const [orders, setOrders] = useState(DataService.getOrders());
   const [customers, setCustomers] = useState(DataService.getCustomers());
@@ -76,9 +83,64 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate })
       .slice(0, 6);
   }, [permits, todayStr]);
 
+  // === التقرير اليومي للمالك ===
+  const [showReportPreview, setShowReportPreview] = useState(false);
+  const ownerReport = useMemo(() => DataService.buildOwnerDailyReport(), [orders, permits, sms]);
+  // تحصيل اليوم لكل موظف — عشان المالك يحاسب كل واحد على اللي قبضه آخر اليوم
+  const collectorsReport = useMemo(() => DataService.getDailyCollectorReport(), [orders, logs]);
+  // العملاء غير المسددين — بيظهروا لوحدهم للمتابعة
+  const unpaidFollowUp = useMemo(
+    () => orders
+      .filter(o => !o.isArchived && o.orderStatus !== 'cancelled' && o.remainingAmount > 0)
+      .sort((a, b) => (a.targetDate > b.targetDate ? 1 : -1)),
+    [orders]
+  );
+
+  const handleRemindUnpaid = (order: SalesOrder) => {
+    const phone = (order.customerWhatsapp || '').replace(/[^0-9]/g, '');
+    if (!phone) {
+      toast.warning('لا يوجد رقم واتساب مسجل لهذا العميل.');
+      return;
+    }
+    const cur = getOrderCurrency(order);
+    const text = `السلام عليكم ${order.customerName}،
+تذكير ودّي بسداد المبلغ المتبقي لطلب تصريح الروضة الشريفة رقم #${order.orderNumber}:
+
+• المبلغ المتبقي: ${order.remainingAmount} ${currencySymbol(cur)}
+• موعد الزيارة: ${order.targetDate} الساعة ${order.targetTime}
+
+يرجى إرسال التحويل، وسيتم تأكيد الحجز فور وصوله. تقبل الله زيارتكم وطاعتكم.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    DataService.recordPaymentReminder(order.id);
+    refreshData();
+    toast.success(order.lastReminderAt ? 'تمت إعادة إرسال تذكير السداد وتسجيله.' : 'تم إرسال تذكير السداد وتسجيله.');
+  };
+  const riyadhHour = Number(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', hourCycle: 'h23' }).format(new Date())
+  );
+  const isReportTime = riyadhHour >= 16;
+
+  const handleSendOwnerReport = () => {
+    const url = DataService.getOwnerReportWhatsappUrl();
+    if (!url) {
+      toast.error('أضف رقم واتساب الشركة أولاً من الإعدادات — هيكون هو رقم استلام التقرير.');
+      return;
+    }
+    window.open(url, '_blank');
+  };
+
+  const handleCopyOwnerReport = async () => {
+    try {
+      await navigator.clipboard.writeText(ownerReport.text);
+      toast.success('تم نسخ نص التقرير — الصقه في أي محادثة واتساب.');
+    } catch {
+      toast.error('تعذر النسخ من المتصفح.');
+    }
+  };
+
   return (
     <div className="space-y-6">
-      
+
       {/* Welcome Banner */}
       <div className="relative overflow-hidden bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-900 border border-emerald-700/40 rounded-3xl p-6 md:p-8 shadow-lg text-white">
         <div className="relative z-10 space-y-2 max-w-2xl">
@@ -190,6 +252,154 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate })
         </div>
 
       </div>
+
+      {/* التقرير اليومي للمالك — ملخص اليوم على واتساب من غير فتح النظام */}
+      <div className={`rounded-3xl border p-5 shadow-sm space-y-4 ${isReportTime ? 'bg-amber-50/60 border-amber-300' : 'bg-white border-slate-200'}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className={`p-2 rounded-xl border ${isReportTime ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">التقرير اليومي للمالك</h3>
+              <p className="text-[11px] text-slate-500">
+                ملخص اليوم جاهز للإرسال على واتساب — {isReportTime ? 'وقت الإرسال المثالي آخر اليوم' : `يظهر التنبيه تلقائياً بعد الساعة 4 عصراً بتوقيت الرياض (الآن ${riyadhHour}:00)`}
+              </p>
+            </div>
+          </div>
+          {isReportTime && (
+            <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 rounded-full self-start sm:self-auto">
+              ⏰ وقت مراجعة وإرسال تقرير اليوم
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200">
+            <div className="text-[10px] font-bold text-blue-700 mb-1">حجز اليوم</div>
+            <div className="text-lg font-black font-mono text-blue-900">
+              {orders.filter(o => o.targetDate === todayStr && o.orderStatus !== 'cancelled').length} طلب
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
+            <div className="text-[10px] font-bold text-emerald-700 mb-1">تحصيل اليوم (رسائل مطابقة)</div>
+            <div className="text-lg font-black font-mono text-emerald-900">
+              {sms.filter(m => m.status === 'matched' && new Date(m.receivedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }) === todayStr).length} رسالة
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200">
+            <div className="text-[10px] font-bold text-rose-700 mb-1">متأخرات السداد</div>
+            <div className="text-lg font-black font-mono text-rose-900">
+              {orders.filter(o => !o.isArchived && o.orderStatus !== 'cancelled' && o.remainingAmount > 0 && o.targetDate < todayStr).length} طلب
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+            <div className="text-[10px] font-bold text-slate-600 mb-1">تصاريح متاحة</div>
+            <div className="text-lg font-black font-mono text-slate-900">{availablePermits}</div>
+          </div>
+        </div>
+
+        {/* تحصيل اليوم لكل موظف — المالك يحاسب كل واحد على اللي قبضه وعلى شغله */}
+        {collectorsReport.length > 0 && (
+          <div className="bg-white/70 border border-slate-200 rounded-2xl p-3 space-y-2">
+            <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+              <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+              تحصيل اليوم لكل موظف — عشان تحاسبهم آخر اليوم
+            </div>
+            <div className="space-y-1.5">
+              {collectorsReport.map(c => (
+                <div key={c.userId} className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-bold text-slate-800 truncate">{c.userName}</span>
+                    <span className="text-[10px] text-slate-500 shrink-0">{c.paymentsCount} سداد · سحب {c.permitsClaimed} تصريح{c.ordersCreated ? ` · أنشأ ${c.ordersCreated} طلب` : ''}</span>
+                  </div>
+                  <span className="text-xs font-mono font-black text-emerald-700 shrink-0">
+                    {[c.collectedSAR > 0 && `${c.collectedSAR.toLocaleString('en-US')} ر.س`, c.collectedEGP > 0 && `${c.collectedEGP.toLocaleString('en-US')} ج.م`].filter(Boolean).join(' + ') || 'بدون تحصيل'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showReportPreview && (
+          <pre className="bg-slate-900 text-emerald-200 rounded-2xl p-4 text-[11px] font-mono whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto" dir="rtl">
+            {ownerReport.text}
+          </pre>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleSendOwnerReport}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-colors"
+          >
+            <Send className="w-4 h-4" />
+            إرسال للمالك على واتساب
+          </button>
+          <button
+            onClick={handleCopyOwnerReport}
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Copy className="w-4 h-4" />
+            نسخ النص
+          </button>
+          <button
+            onClick={() => setShowReportPreview(v => !v)}
+            className="text-xs font-bold text-slate-500 hover:text-slate-700 underline"
+          >
+            {showReportPreview ? 'إخفاء المعاينة' : 'معاينة نص التقرير'}
+          </button>
+        </div>
+      </div>
+
+      {/* عملاء غير مسددين — بيظهروا لوحدهم للمتابعة بضغطة تذكير */}
+      {unpaidFollowUp.length > 0 && (
+        <div className="rounded-3xl border p-5 shadow-sm space-y-3 bg-white border-rose-200">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">عملاء غير مسددين — للمتابعة</h3>
+                <p className="text-[11px] text-slate-500">{unpaidFollowUp.length} طلب به مبلغ متبقي — تذكير سداد لكل عميل بضغطة</p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate('orders')}
+              className="text-[11px] font-bold text-rose-600 hover:text-rose-700 underline shrink-0"
+            >
+              الذهاب للطلبات
+            </button>
+          </div>
+
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {unpaidFollowUp.map(o => {
+              const cur = getOrderCurrency(o);
+              return (
+                <div key={o.id} className="flex items-center justify-between gap-2 bg-rose-50/50 border border-rose-100 rounded-xl px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-800 truncate">
+                      {o.customerName} <span className="text-slate-400 font-mono">#{o.orderNumber}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      متبقي <span className="font-mono font-bold text-rose-700">{o.remainingAmount} {currencySymbol(cur)}</span> · موعد {o.targetDate}
+                      {o.lastReminderAt && ` · آخر تذكير ${new Date(o.lastReminderAt).toLocaleDateString('ar-EG', { timeZone: 'Asia/Riyadh' })}`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRemindUnpaid(o)}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[11px] font-bold transition-colors"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    تذكير سداد
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick Start Onboarding Guide for New Setup / Operations */}
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 border border-slate-700/60 rounded-3xl p-6 shadow-xl text-white space-y-4">

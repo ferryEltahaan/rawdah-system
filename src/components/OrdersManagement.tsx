@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingBag, 
   Plus, 
@@ -16,14 +16,18 @@ import {
   Eye,
   ImageIcon,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Share2,
+  Banknote,
+  Bell
 } from 'lucide-react';
 import { SalesOrder, Customer, UserProfile, OrderStatus, DeliveryStatus, OrderType, Permit, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';
 import { useToast } from './Toast';
 import { downloadCsv, todayRiyadh } from '../utils/csvHelpers';
 import { printOrderReceipt } from '../utils/printHelpers';
-import { currencySymbol, getOrderCurrency } from '../utils/currency';
+import { currencySymbol, getOrderCurrency, providerCurrency, providerLabel } from '../utils/currency';
+import { useImageActions } from '../hooks/useImageActions';
 import confetti from 'canvas-confetti';
 
 interface OrdersManagementProps {
@@ -41,6 +45,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [customers, setCustomers] = useState<Customer[]>(DataService.getCustomers());
   const [permits, setPermits] = useState<Permit[]>(DataService.getPermits());
   const toast = useToast();
+  // تحميل/مشاركة صور التصاريح بشكل يعمل على الجوال (data URL → Blob)
+  const imageActions = useImageActions();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -57,7 +63,10 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [newTargetDate, setNewTargetDate] = useState(today);
   const [newTargetHour, setNewTargetHour] = useState('00');
   const [newTargetMin, setNewTargetMin] = useState('00');
-  const [newPermitsCount, setNewPermitsCount] = useState(1);
+  const [newMaleCount, setNewMaleCount] = useState(1);
+  const [newFemaleCount, setNewFemaleCount] = useState(0);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerList, setShowCustomerList] = useState(false);
   const [newOrderType, setNewOrderType] = useState<OrderType>('instant');
   const [newUnitPrice, setNewUnitPrice] = useState(150);
   const [newPaidAmount, setNewPaidAmount] = useState(0);
@@ -67,6 +76,21 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     return c === 'EGP' ? 'EGP' : 'SAR';
   });
 
+  // عدد التصاريح الكلي مشتق من مجموع الذكور والإناث
+  const newPermitsCount = newMaleCount + newFemaleCount;
+
+  // بحث سريع في اختيار العميل بالاسم أو اللقب أو جزء من رقم الموبايل
+  const selectedCustomer = customers.find(c => c.id === newCustomerId) || null;
+  const normalizedSearch = customerSearch.trim().toLowerCase();
+  const filteredCustomers = normalizedSearch
+    ? customers.filter(c =>
+        c.fullName.toLowerCase().includes(normalizedSearch) ||
+        (c.nickname || '').toLowerCase().includes(normalizedSearch) ||
+        c.whatsappNumber.replace(/[\s+-]/g, '').includes(normalizedSearch.replace(/[\s+-]/g, ''))
+      )
+    : customers;
+  const customerListVisible = showCustomerList && !newCustomerId && filteredCustomers.length > 0;
+
   // عرض الطلبات النشطة أو الأرشيف
   const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
   // معاينة صورة تصريح مسحوب
@@ -74,8 +98,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   // WhatsApp Share Modal
   const [whatsAppModalOrder, setWhatsAppModalOrder] = useState<SalesOrder | null>(null);
-  const [whatsAppTemplate, setWhatsAppTemplate] = useState<'confirm' | 'payment_reminder' | 'visit_reminder'>('confirm');
   const [markAsSent, setMarkAsSent] = useState(true);
+
+  // Direct Payment Modal — زر "تم السداد" يسجّل باسم الموظف عشان يتحاسب عليه آخر اليوم
+  const [paymentModalOrder, setPaymentModalOrder] = useState<SalesOrder | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
 
   const refreshData = () => {
     setOrders(DataService.getOrders());
@@ -126,6 +155,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       customerName: customer.fullName,
       customerWhatsapp: customer.whatsappNumber,
       permitsCount: newPermitsCount,
+      permitsCountMale: newMaleCount,
+      permitsCountFemale: newFemaleCount,
       targetDate: newTargetDate,
       targetTime,
       orderType: newOrderType,
@@ -144,12 +175,18 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     refreshData();
     setShowCreateModal(false);
     setNewCustomerId('');
+    setCustomerSearch('');
+    setNewMaleCount(1);
+    setNewFemaleCount(0);
     setNewPaidAmount(0);
     setNewNotes('');
   };
 
   const handleStatusChange = (orderId: string, status: OrderStatus) => {
-    DataService.updateOrderStatus(orderId, status);
+    const released = DataService.updateOrderStatus(orderId, status);
+    if (status === 'cancelled' && released > 0) {
+      toast.success(`تم إلغاء الطلب وإرجاع ${released} تصريح للمخزون تلقائياً.`);
+    }
     refreshData();
   };
 
@@ -158,56 +195,92 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     refreshData();
   };
 
-  const buildWhatsAppMessage = (order: SalesOrder, template: 'confirm' | 'payment_reminder' | 'visit_reminder' = whatsAppTemplate) => {
+  // أجزاء الرسالة التي يختار الموظف إرسالها للعميل
+  const [waInclude, setWaInclude] = useState({
+    confirmAndVisit: true,  // تأكيد الحجز + الموعد
+    permits: true,          // عدد التصاريح (ذكر/أنثى)
+    paymentDemand: false,   // رسالة المطالبة (القيمة + رقم/نوع التحويل)
+    bankAccounts: false,    // أرقام الحسابات للتحويل
+    permitCodes: false,     // أكواد/صور التصاريح
+  });
+
+  const applyWaPreset = (preset: 'confirm_only' | 'code_only' | 'payment_only' | 'all') => {
+    setWaInclude(
+      preset === 'confirm_only' ? { confirmAndVisit: true, permits: true, paymentDemand: false, bankAccounts: false, permitCodes: false }
+      : preset === 'code_only' ? { confirmAndVisit: false, permits: false, paymentDemand: false, bankAccounts: false, permitCodes: true }
+      : preset === 'payment_only' ? { confirmAndVisit: false, permits: false, paymentDemand: true, bankAccounts: true, permitCodes: false }
+      : { confirmAndVisit: true, permits: true, paymentDemand: true, bankAccounts: true, permitCodes: true }
+    );
+  };
+
+  const buildWhatsAppMessage = (order: SalesOrder, include = waInclude) => {
     const isFullyPaid = order.paidAmount >= order.totalAmount && order.totalAmount > 0;
     const sym = currencySymbol(getOrderCurrency(order));
-    const company = DataService.getCompanySettings();
     const accounts = DataService.getFinancialAccounts().filter(a => a.isActive);
+    // سطر عدد التصاريح — يُظهر تقسيم الذكور/الإناث عند توفره
+    const permitsLine = (order.permitsCountMale != null || order.permitsCountFemale != null)
+      ? `• عدد التصاريح: ${order.permitsCount} (${order.permitsCountMale || 0} ذكر / ${order.permitsCountFemale || 0} أنثى)`
+      : `• عدد التصاريح: ${order.permitsCount}`;
 
-    if (template === 'payment_reminder') {
-      const accountsList = accounts.map(a => `• ${a.accountName} (${a.accountNumber})`).join('\n') || 'يرجى التواصل لمعرفة الحساب البنكي';
-      return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
-نود تذكيركم بمتابعة سداد حجز تصريح الروضة الشريفة:
+    // التحويلات المرتبطة بهذا الطلب (رقم التحويل + القيمة + نوع التحويل)
+    const transfers = DataService.getSmsMessages().filter(
+      m => m.matchedOrderId === order.id && (m.parsedAmount || 0) > 0
+    );
 
-• رقم الطلب: #${order.orderNumber}
-• الموعد: ${order.targetDate} (الساعة: ${order.targetTime})
-• إجمالي المبلغ: ${order.totalAmount} ${sym}
-• المبلغ المتبقي: ${order.remainingAmount} ${sym}
+    // رسالة مُخصصة حسب الأجزاء المختارة
+    const sections: string[] = [];
 
-طرق الدفع المتاحة:
-${accountsList}
-
-فور التحويل سيتم تأكيد السداد وإصدار التصريح فوراً. شكراً لثقتكم.`;
-    }
-
-    if (template === 'visit_reminder') {
-      return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
-نذكركم بموعد زيارة الروضة الشريفة المباركة:
-
-• تاريخ الزيارة: ${order.targetDate}
-• وقت الفترة: ${order.targetTime}
-• عدد التصاريح: ${order.permitsCount}
-
-يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.
-تقبل الله طاعتكم وزيارتكم 🕌✨`;
-    }
-
-    // Default 'confirm' template
-    return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
+    if (include.confirmAndVisit) {
+      sections.push(`السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
 نود إبلاغكم بأنه تم تجهيز طلب تصريح زيارة الروضة الشريفة بنجاح 🕌✨
 
 • رقم الطلب: #${order.orderNumber}
 • تاريخ الزيارة: ${order.targetDate}
-• وقت الفترة: ${order.targetTime}
-• عدد التصاريح: ${order.permitsCount}
-• حالة السداد: ${isFullyPaid ? 'مسدد بالكامل' : `متبقي ${order.remainingAmount} ${sym}`}
+• وقت الفترة: ${order.targetTime}${include.permits ? `\n${permitsLine}` : ''}
 
-تقبل الله زيارتكم وطاعتكم.`;
+يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.`);
+    }
+
+    if (include.paymentDemand) {
+      const transferLines = transfers.map(t =>
+        `• تم استلام تحويل بقيمة ${t.parsedAmount} ${currencySymbol(providerCurrency(t.parsedProvider || 'other'))} — ${providerLabel(t.parsedProvider || 'other')}${t.parsedReferenceId ? ` — رقم التحويل: ${t.parsedReferenceId}` : ''}`
+      ).join('\n');
+
+      sections.push(`${isFullyPaid ? '✅ تم تأكيد استلام كامل المبلغ' : 'بانتظار سداد المبلغ المتبقي'}:
+
+• إجمالي المبلغ: ${order.totalAmount} ${sym}
+• المبلغ المدفوع: ${order.paidAmount} ${sym}${isFullyPaid ? '' : `\n• المبلغ المتبقي: ${order.remainingAmount} ${sym}`}
+${transferLines || (isFullyPaid ? '' : 'بانتظار وصول التحويل لتأكيد السداد وإصدار التصريح.')}`.trim());
+    }
+
+    if (include.bankAccounts && !isFullyPaid) {
+      const accountsList = accounts.map(a => `• ${a.accountName} (${a.accountNumber})`).join('\n') || 'يرجى التواصل لمعرفة الحساب البنكي';
+      sections.push(`طرق الدفع المتاحة:
+${accountsList}`);
+    }
+
+    if (include.permitCodes) {
+      const direct = (order.assignedPermitIds || [])
+        .map(id => permitById[id])
+        .filter(Boolean) as Permit[];
+      const claimed = direct.length > 0
+        ? direct
+        : permits.filter(p => p.status === 'assigned' && p.assignedToCustomerId === order.customerId);
+      const codes = claimed.map(p => `• ${p.permitCode} — ${p.slotDate} (${p.slotFormatted})`).join('\n');
+      sections.push(`تصاريحكم${claimed.length ? ` (${claimed.length})` : ''}:
+${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكود فور اعتمادها.'}`);
+    }
+
+    if (sections.length === 0) {
+      return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،\nنتواصل معكم بخصوص طلب تصريح زيارة الروضة الشريفة رقم #${order.orderNumber}.`;
+    }
+
+    return sections.join('\n\n') + '\n\nتقبل الله زيارتكم وطاعتكم.';
   };
 
   const handleOpenWhatsApp = (order: SalesOrder) => {
     window.open(
-      `https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(order, whatsAppTemplate))}`,
+      `https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(order))}`,
       '_blank',
       'noopener'
     );
@@ -229,32 +302,61 @@ ${accountsList}
     }
   };
 
-  const handleCopyPermitImage = async (imageUrl: string) => {
-    try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      await navigator.clipboard.write([
-        new ClipboardItem({ [blob.type]: blob })
-      ]);
-      toast.success('تم نسخ صورة التصريح إلى الحافظة! يمكنك الآن لصقها مباشرة في شات الواتساب (Ctrl + V).');
-    } catch {
-      const link = document.createElement('a');
-      link.href = imageUrl;
-      link.download = `تصريح_${todayRiyadh()}.png`;
-      link.click();
-      toast.info('تم نسخ/تحميل صورة التصريح لجهازك لترفقها في رسالة الواتساب.');
+  // فتح مربع تسجيل السداد — المبلغ الافتراضي هو المتبقي
+  const handleOpenPayment = (order: SalesOrder) => {
+    const remaining = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
+    setPaymentModalOrder(order);
+    setPaymentAmount(String(remaining));
+    setPaymentNote('');
+  };
+
+  // تأكيد السداد — يُسجّل باسم المستخدم الحالي ويظهر في تقرير آخر اليوم
+  const handleConfirmPayment = async () => {
+    if (!paymentModalOrder) return;
+    setPaymentSubmitting(true);
+    const res = await DataService.addOrderPayment(paymentModalOrder.id, Number(paymentAmount), paymentNote);
+    setPaymentSubmitting(false);
+    if (res.success) {
+      toast.success(res.message);
+      setPaymentModalOrder(null);
+      refreshData();
+    } else {
+      toast.error(res.message);
     }
   };
 
-  const handleDownloadPermitImage = (imageUrl: string, permitCode: string) => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `${permitCode}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`تم تحميل صورة التصريح ${permitCode} بنجاح.`);
+  // تذكير سداد واتساب للعميل + تسجيله — الزر يدعم "إعادة الإرسال"
+  const handleSendPaymentReminder = (order: SalesOrder) => {
+    const phone = order.customerWhatsapp.replace(/[^0-9]/g, '');
+    if (!phone) {
+      toast.warning('لا يوجد رقم واتساب مسجل لهذا العميل.');
+      return;
+    }
+    const reminderText = buildWhatsAppMessage(order, {
+      confirmAndVisit: false,
+      permits: false,
+      paymentDemand: true,
+      bankAccounts: true,
+      permitCodes: false,
+    });
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(reminderText)}`, '_blank', 'noopener');
+    DataService.recordPaymentReminder(order.id);
+    refreshData();
+    toast.success(order.lastReminderAt ? 'تمت إعادة إرسال تذكير السداد وتسجيله.' : 'تم إرسال تذكير السداد وتسجيله.');
   };
+
+  const handleCopyPermitImage = (imageUrl: string, permitCode: string) =>
+    imageActions.copyOrDownload(imageUrl, `تصريح_${permitCode}.png`);
+
+  const handleDownloadPermitImage = (imageUrl: string, permitCode: string) =>
+    imageActions.download(imageUrl, `${permitCode}.png`);
+
+  // مشاركة مباشرة عبر زر المشاركة الأصلي بالجوال (يفتح قائمة واتساب/الرسائل بالصورة مرفقة)
+  const handleSharePermitImage = (imageUrl: string, permitCode: string) =>
+    imageActions.shareOrDownload(imageUrl, `تصريح_${permitCode}.png`, {
+      title: `تصريح ${permitCode}`,
+      text: `صورة تصريح رقم ${permitCode}`,
+    });
 
   const handlePrintReceipt = async (order: SalesOrder) => {
     const opened = await printOrderReceipt(order, DataService.getCompanySettings());
@@ -283,7 +385,7 @@ ${accountsList}
 
     downloadCsv(
       `orders-${todayRiyadh()}`,
-      ['رقم الطلب', 'اسم العميل', 'رقم الواتساب', 'تاريخ الزيارة', 'وقت الفترة', 'عدد التصاريح', 'نوع الحجز', 'العملة', 'الإجمالي', 'المدفوع', 'المتبقي', 'حالة الطلب', 'موقف الإرسال'],
+      ['رقم الطلب', 'اسم العميل', 'رقم الواتساب', 'تاريخ الزيارة', 'وقت الفترة', 'عدد التصاريح', 'عدد التصاريح ذكر', 'عدد التصاريح أنثى', 'نوع الحجز', 'العملة', 'الإجمالي', 'المدفوع', 'المتبقي', 'حالة الطلب', 'موقف الإرسال'],
       filteredOrders.map(order => [
         order.orderNumber,
         order.customerName,
@@ -291,6 +393,8 @@ ${accountsList}
         order.targetDate,
         order.targetTime,
         order.permitsCount,
+        order.permitsCountMale ?? '',
+        order.permitsCountFemale ?? '',
         order.orderType === 'instant' ? 'فوري' : 'حجز موعد',
         currencySymbol(getOrderCurrency(order)),
         order.totalAmount,
@@ -324,9 +428,47 @@ ${accountsList}
     return matchesSearch && matchesStatus && matchesType && matchesArchive && matchesQuick;
   });
 
+  // === الترتيب الذكي: طلبات اليوم اللي عدى موعدها تطلع فوق، وبعدها علامة "الوقت الحالي" ثم طلبات اليوم الجاية ===
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(v => v + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const riyadhNow = useMemo(() => {
+    const [h, m] = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date()).split(':').map(Number);
+    return { min: h * 60 + m, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+  }, [nowTick]);
+
+  const slotMinutes = (t?: string) => {
+    if (!t) return 24 * 60;
+    const [h, m] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const isOrderTimePassed = (o: SalesOrder) =>
+    o.targetDate === today && slotMinutes(o.targetTime) <= riyadhNow.min && o.orderStatus !== 'cancelled';
+
+  const pastTodayCount = filteredOrders.filter(isOrderTimePassed).length;
+
+  const smartOrders = useMemo(() => {
+    if (viewMode === 'archived') return filteredOrders;
+    const pastToday = filteredOrders.filter(isOrderTimePassed);
+    const upcomingToday = filteredOrders.filter(o => o.targetDate === today && !isOrderTimePassed(o));
+    const others = filteredOrders.filter(o => o.targetDate !== today);
+    const byTime = (a: SalesOrder, b: SalesOrder) => slotMinutes(a.targetTime) - slotMinutes(b.targetTime);
+    return [...pastToday.sort(byTime), ...upcomingToday.sort(byTime), ...others];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredOrders, viewMode, today, riyadhNow]);
+
   const activeOrdersCount = orders.filter(o => !o.isArchived).length;
   const archivedOrdersCount = orders.filter(o => o.isArchived).length;
-  const todayOrdersCount = orders.filter(o => !o.isArchived && o.targetDate === today).length;
+  const todayOrders = orders.filter(o => !o.isArchived && o.targetDate === today);
+  const todayOrdersCount = todayOrders.length;
+  // عدد تصاريح اليوم (لمعرفة حجم الحمل اليومي بجانب عدد الطلبات)
+  const todayPermitsCount = todayOrders.reduce((sum, o) => sum + o.permitsCount, 0);
   const tomorrowOrdersCount = orders.filter(o => !o.isArchived && o.targetDate === tomorrowStr).length;
   const unpaidOrdersCount = orders.filter(o => !o.isArchived && o.paidAmount < o.totalAmount).length;
   const unsentOrdersCount = orders.filter(o => !o.isArchived && o.deliveryStatus !== 'sent').length;
@@ -480,6 +622,13 @@ ${accountsList}
           >
             <span>📅 طلبات اليوم</span>
             <span className="bg-emerald-800 text-white px-1.5 py-0.5 rounded-full text-[10px]">{todayOrdersCount}</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] border ${
+              quickFilter === 'today'
+                ? 'bg-white/20 text-white border-white/40'
+                : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+            }`} title="إجمالي عدد التصاريح المطلوبة اليوم">
+              {todayPermitsCount} تصريح
+            </span>
           </button>
           <button
             onClick={() => setQuickFilter('tomorrow')}
@@ -548,14 +697,14 @@ ${accountsList}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredOrders.length === 0 ? (
+              {smartOrders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-10 text-slate-400 font-medium">
                     {viewMode === 'archived' ? 'لا توجد طلبات مؤرشفة مطابقة.' : 'لا توجد طلبات مطابقة للبحث.'}
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map(order => {
+                smartOrders.map((order, idx) => {
                   const isFullyPaid = order.paidAmount >= order.totalAmount && order.totalAmount > 0;
                   const orderSym = currencySymbol(getOrderCurrency(order));
 
@@ -582,7 +731,15 @@ ${accountsList}
                       : order.orderStatus;
 
                   return (
-                    <tr key={order.id} className={`transition-colors ${order.isArchived ? 'bg-slate-50/60 opacity-90' : 'hover:bg-slate-50/80'}`}>
+                    <React.Fragment key={order.id}>
+                      {idx === pastTodayCount && pastTodayCount > 0 && viewMode !== 'archived' && (
+                        <tr className="bg-amber-50/80">
+                          <td colSpan={9} className="py-1.5 px-4 text-center text-[11px] font-bold text-amber-800">
+                            ⏰ الوقت الحالي بتوقيت الرياض — {riyadhNow.label} (الطلبات فوق هذا السطر عدى موعدها)
+                          </td>
+                        </tr>
+                      )}
+                      <tr className={`transition-colors ${order.isArchived ? 'bg-slate-50/60 opacity-90' : 'hover:bg-slate-50/80'}`}>
                       {/* Order Number */}
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
                         #{order.orderNumber}
@@ -601,6 +758,11 @@ ${accountsList}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-800">{order.targetDate}</div>
                         <div className="text-[11px] text-amber-700 font-mono font-bold">الساعة: {order.targetTime}</div>
+                        {isOrderTimePassed(order) && !order.isArchived && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold mt-0.5 inline-block">
+                            ⏰ عدى موعدها
+                          </span>
+                        )}
                         {order.isArchived && (
                           <div className="text-[10px] text-indigo-700 font-bold mt-0.5 flex items-center gap-1">
                             <Archive className="w-3 h-3" />
@@ -612,6 +774,16 @@ ${accountsList}
                       {/* Count & Type */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-800">{order.permitsCount} تصريح</div>
+                        {(order.permitsCountMale != null || order.permitsCountFemale != null) && (
+                          <div className="text-[10px] text-slate-500 font-bold mt-0.5 flex flex-wrap items-center gap-1">
+                            {order.permitsCountMale != null && order.permitsCountMale > 0 && (
+                              <span className="text-blue-700">👨 {order.permitsCountMale} ذكر</span>
+                            )}
+                            {order.permitsCountFemale != null && order.permitsCountFemale > 0 && (
+                              <span className="text-pink-700">🧕 {order.permitsCountFemale} أنثى</span>
+                            )}
+                          </div>
+                        )}
                         <span className={`text-[10px] px-2 py-0.5 rounded-full inline-block mt-0.5 font-bold ${
                           order.orderType === 'instant' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-blue-50 text-blue-800 border border-blue-200'
                         }`}>
@@ -742,6 +914,32 @@ ${accountsList}
                               >
                                 <Ticket className="w-4 h-4" />
                               </button>
+
+                              {/* Direct Payment Button — يسجّل السداد باسم الموظف عشان يتحاسب عليه آخر اليوم */}
+                              {!isFullyPaid && (
+                                <button
+                                  onClick={() => handleOpenPayment(order)}
+                                  className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 transition-all shadow-sm"
+                                  title="تسجيل سداد مباشر — يُحسب باسمك في تقرير آخر اليوم"
+                                >
+                                  <Banknote className="w-4 h-4" />
+                                </button>
+                              )}
+
+                              {/* Payment Reminder Button — تذكير سداد واتساب + إعادة الإرسال */}
+                              {!isFullyPaid && (
+                                <button
+                                  onClick={() => handleSendPaymentReminder(order)}
+                                  className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all shadow-sm"
+                                  title={
+                                    order.lastReminderAt
+                                      ? `إعادة إرسال تذكير السداد — آخر تذكير: ${new Date(order.lastReminderAt).toLocaleString('ar-EG', { timeZone: 'Asia/Riyadh', dateStyle: 'short', timeStyle: 'short' })}`
+                                      : 'إرسال تذكير سداد للعميل عبر واتساب'
+                                  }
+                                >
+                                  <Bell className="w-4 h-4" />
+                                </button>
+                              )}
                             </>
                           )}
 
@@ -791,6 +989,7 @@ ${accountsList}
                         </div>
                       </td>
                     </tr>
+                    </React.Fragment>
                   );
                 })
               )}
@@ -811,21 +1010,59 @@ ${accountsList}
               <button type="button" onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
 
-            <div>
+            <div className="relative">
               <label className="block text-xs font-bold text-slate-700 mb-1">اختر العميل:</label>
-              <select
-                required
-                value={newCustomerId}
-                onChange={(e) => setNewCustomerId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-medium"
-              >
-                <option value="">-- اختر من قائمة العملاء المسجلين --</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.fullName} ({c.whatsappNumber}) {c.nickname ? `- [${c.nickname}]` : ''}
-                  </option>
-                ))}
-              </select>
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                  <span className="text-xs font-bold text-emerald-900 truncate">
+                    {selectedCustomer.fullName} — <span dir="ltr" className="font-mono">{selectedCustomer.whatsappNumber}</span>
+                    {selectedCustomer.nickname ? ` (${selectedCustomer.nickname})` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setNewCustomerId(''); setCustomerSearch(''); setShowCustomerList(true); }}
+                    className="shrink-0 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                  >
+                    تغيير
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerList(true); }}
+                    onFocus={() => setShowCustomerList(true)}
+                    onBlur={() => setTimeout(() => setShowCustomerList(false), 150)}
+                    placeholder="اكتب جزءاً من الاسم أو رقم الموبايل..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-medium"
+                  />
+                  {customerListVisible && (
+                    <div className="absolute z-30 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl divide-y divide-slate-50">
+                      {filteredCustomers.slice(0, 30).map(c => (
+                        <button
+                          type="button"
+                          key={c.id}
+                          // تأخير بسيط حتى لا يسبق الـ blur ويُغلق القائمة قبل التفعيل
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setNewCustomerId(c.id);
+                            setCustomerSearch('');
+                            setShowCustomerList(false);
+                          }}
+                          className="w-full text-right px-3 py-2 hover:bg-emerald-50 transition-colors"
+                        >
+                          <div className="text-xs font-bold text-slate-900">{c.fullName}</div>
+                          <div className="text-[11px] text-slate-500 font-mono" dir="ltr">{c.whatsappNumber}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {customerSearch.trim() && filteredCustomers.length === 0 && (
+                    <p className="text-[11px] text-red-600 mt-1 font-bold">لا يوجد عميل مطابق — جرّب اسماً أو رقماً آخر.</p>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -842,15 +1079,45 @@ ${accountsList}
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">عدد التصاريح:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  عدد التصاريح — ذكر 👨:
+                </label>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   max={50}
-                  value={newPermitsCount}
-                  onChange={(e) => setNewPermitsCount(Number(e.target.value))}
+                  value={newMaleCount}
+                  onChange={(e) => setNewMaleCount(Math.max(0, Number(e.target.value)))}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-mono"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  عدد التصاريح — أنثى 🧕:
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={newFemaleCount}
+                  onChange={(e) => setNewFemaleCount(Math.max(0, Number(e.target.value)))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="flex items-end">
+                {newPermitsCount === 0 ? (
+                  <p className="text-[11px] text-rose-600 font-bold bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 w-full">
+                    يجب إدخال تصريح واحد على الأقل (ذكر أو أنثى).
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-500 font-bold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 w-full">
+                    إجمالي التصاريح: {newPermitsCount} — الإجمالي المالي: {newPermitsCount * newUnitPrice} {currencySymbol(newCurrency)}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -989,7 +1256,8 @@ ${accountsList}
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
+                disabled={newPermitsCount === 0}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 حفظ وإنشاء الطلب
               </button>
@@ -1010,45 +1278,67 @@ ${accountsList}
               <button onClick={() => setWhatsAppModalOrder(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
 
-            {/* Template Selector */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => setWhatsAppTemplate('confirm')}
-                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
-                  whatsAppTemplate === 'confirm'
-                    ? 'bg-white text-emerald-800 shadow-sm border border-emerald-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🕌 تأكيد الحجز
-              </button>
-              <button
-                type="button"
-                onClick={() => setWhatsAppTemplate('payment_reminder')}
-                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
-                  whatsAppTemplate === 'payment_reminder'
-                    ? 'bg-white text-amber-800 shadow-sm border border-amber-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                💳 تذكير سداد
-              </button>
-              <button
-                type="button"
-                onClick={() => setWhatsAppTemplate('visit_reminder')}
-                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
-                  whatsAppTemplate === 'visit_reminder'
-                    ? 'bg-white text-blue-800 shadow-sm border border-blue-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                ⏰ تذكير موعد
-              </button>
+            {/* اختيار سريع لمحتوى الرسالة */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">اختر محتوى الرسالة:</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => applyWaPreset('confirm_only')}
+                  className="py-2 px-2 rounded-xl text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-all"
+                >
+                  🕌 تأكيد وموعد الحجز فقط
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyWaPreset('code_only')}
+                  className="py-2 px-2 rounded-xl text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 transition-all"
+                >
+                  🎫 صورة الكود فقط
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyWaPreset('payment_only')}
+                  className="py-2 px-2 rounded-xl text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-all"
+                >
+                  💳 رسالة المطالبة فقط
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyWaPreset('all')}
+                  className="py-2 px-2 rounded-xl text-[11px] font-bold bg-slate-700 text-white border border-slate-700 hover:bg-slate-800 transition-all"
+                >
+                  📦 الكل دفعة واحدة
+                </button>
+              </div>
+            </div>
+
+            {/* تخصيص دقيق للأجزاء */}
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['confirmAndVisit', 'تأكيد الحجز + الموعد'],
+                ['permits', 'عدد التصاريح'],
+                ['paymentDemand', 'المطالبة + التحويل'],
+                ['bankAccounts', 'أرقام الحسابات'],
+                ['permitCodes', 'أكواد التصاريح'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setWaInclude(prev => ({ ...prev, [key]: !prev[key] }))}
+                  className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold transition-all border ${
+                    waInclude[key]
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {waInclude[key] ? '✓ ' : ''}{label}
+                </button>
+              ))}
             </div>
 
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 space-y-1.5 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
-              {buildWhatsAppMessage(whatsAppModalOrder, whatsAppTemplate)}
+              {buildWhatsAppMessage(whatsAppModalOrder)}
             </div>
 
             {/* عرض صور التصاريح المخصصة مع أزرار نسخ الصورة للواتساب والتحميل */}
@@ -1089,33 +1379,42 @@ ${accountsList}
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
                           {p.imageUrl && (
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleCopyPermitImage(p.imageUrl)}
-                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs transition-all"
+                                onClick={() => handleSharePermitImage(p.imageUrl, p.permitCode)}
+                                className="px-2.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
+                                title="مشاركة الصورة مباشرة عبر واتساب (مشاركة الجوال)"
+                              >
+                                <Share2 className="w-3.5 h-3.5" />
+                                <span>إرسال</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPermitImage(p.imageUrl, p.permitCode)}
+                                className="px-2.5 py-2 rounded-lg bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-[11px] font-bold hidden sm:flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
                                 title="نسخ صورة التصريح للحافظة (للصقها بالواتساب Ctrl+V)"
                               >
-                                <Copy className="w-3 h-3" />
-                                <span>نسخ الصورة</span>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>نسخ</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDownloadPermitImage(p.imageUrl, p.permitCode)}
-                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
                                 title="تحميل الصورة على جهازك"
                               >
-                                <Download className="w-3.5 h-3.5" />
+                                <Download className="w-4 h-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setPermitPreview(p)}
-                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
                                 title="معاينة الصورة"
                               >
-                                <Eye className="w-3.5 h-3.5" />
+                                <Eye className="w-4 h-4" />
                               </button>
                             </>
                           )}
@@ -1125,7 +1424,7 @@ ${accountsList}
                   </div>
 
                   <p className="text-[10px] text-emerald-800 leading-relaxed bg-white/70 p-2 rounded-lg border border-emerald-200">
-                    💡 <strong>طريقة الإرسال:</strong> اضغط على <strong>«نسخ الصورة»</strong> ثم في محادثة الواتساب اضغط <strong>(Ctrl + V)</strong> للصق صورة التصريح وإرسالها فوراً مع الرسالة.
+                    💡 <strong>طريقة الإرسال:</strong> على الجوال اضغط <strong>«إرسال»</strong> لتفتح قائمة المشاركة وتختار واتساب مباشرة. على الكمبيوتر اضغط <strong>«نسخ»</strong> ثم في محادثة الواتساب اضغط <strong>(Ctrl + V)</strong> للصق صورة التصريح.
                   </p>
                 </div>
               );
@@ -1220,23 +1519,108 @@ ${accountsList}
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
               {permitPreview.imageUrl && (
-                <a
-                  href={permitPreview.imageUrl}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  تحميل الصورة
-                </a>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSharePermitImage(permitPreview.imageUrl!, permitPreview.permitCode)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    مشاركة / إرسال
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPermitImage(permitPreview.imageUrl!, permitPreview.permitCode)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    تحميل الصورة
+                  </button>
+                </>
               )}
               <button
                 onClick={() => setPermitPreview(null)}
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
               >
                 إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIRECT PAYMENT MODAL — زر تم السداد المباشر، يُسجّل باسم الموظف */}
+      {paymentModalOrder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => !paymentSubmitting && setPaymentModalOrder(null)}
+        >
+          <div
+            className="bg-white border border-slate-200 rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Banknote className="w-5 h-5 text-emerald-600" />
+                <span>تسجيل سداد — طلب #{paymentModalOrder.orderNumber}</span>
+              </h3>
+              <button onClick={() => !paymentSubmitting && setPaymentModalOrder(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs space-y-1">
+              <div className="flex justify-between"><span className="text-slate-600">العميل:</span><span className="font-bold text-slate-900">{paymentModalOrder.customerName}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">الإجمالي:</span><span className="font-bold font-mono">{paymentModalOrder.totalAmount} {currencySymbol(getOrderCurrency(paymentModalOrder))}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">المدفوع:</span><span className="font-bold font-mono">{paymentModalOrder.paidAmount} {currencySymbol(getOrderCurrency(paymentModalOrder))}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">المتبقي:</span><span className="font-bold font-mono text-emerald-800">{Math.max(0, Math.round((paymentModalOrder.totalAmount - paymentModalOrder.paidAmount) * 100) / 100)} {currencySymbol(getOrderCurrency(paymentModalOrder))}</span></div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700">المبلغ المُستلم</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm font-mono font-bold outline-none"
+                placeholder="0"
+                disabled={paymentSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700">ملاحظة (اختياري)</label>
+              <input
+                type="text"
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm outline-none"
+                placeholder="مثال: استلام نقدي / تحويل فودافون كاش"
+                disabled={paymentSubmitting}
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200 leading-relaxed">
+              💡 سيُسجَّل هذا السداد باسمك (<strong>{currentUser.fullName}</strong>) في تقرير تحصيل آخر اليوم، ليتحاسب كل موظف على ما قبضه.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setPaymentModalOrder(null)}
+                disabled={paymentSubmitting}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleConfirmPayment}
+                disabled={paymentSubmitting || !paymentAmount || Number(paymentAmount) <= 0}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {paymentSubmitting ? 'جاري التسجيل...' : 'تأكيد السداد'}
               </button>
             </div>
           </div>

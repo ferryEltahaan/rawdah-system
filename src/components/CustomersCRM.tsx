@@ -27,6 +27,7 @@ import {
 import { Customer, SalesOrder, UserProfile } from '../types';
 import { DataService } from '../services/dataService';
 import { currencySymbol, getOrderCurrency } from '../utils/currency';
+import { validateWhatsappNumber } from '../utils/phoneValidation';
 import { useToast } from './Toast';
 import confetti from 'canvas-confetti';
 
@@ -129,11 +130,26 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
   const handleSaveCustomer = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const wValidation = validateWhatsappNumber(whatsappNumber);
+    if (!wValidation.valid) {
+      toast.error(wValidation.error);
+      return;
+    }
+    let normalizedAdditional = '';
+    if (additionalPhone.trim()) {
+      const aValidation = validateWhatsappNumber(additionalPhone);
+      if (!aValidation.valid) {
+        toast.error('الهاتف الإضافي: ' + aValidation.error);
+        return;
+      }
+      normalizedAdditional = aValidation.normalized;
+    }
+
     DataService.saveCustomer({
       id: editingCustomer ? editingCustomer.id : undefined,
       fullName,
-      whatsappNumber,
-      additionalPhone,
+      whatsappNumber: wValidation.normalized,
+      additionalPhone: normalizedAdditional,
       nickname,
       notes,
     });
@@ -864,13 +880,15 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">رقم الواتساب:</label>
               <input
-                type="text"
+                type="tel"
                 required
-                placeholder="+966501234567 أو +201012345678"
+                dir="ltr"
+                placeholder="+966501234567 أو 0501234567"
                 value={whatsappNumber}
                 onChange={(e) => setWhatsappNumber(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-mono"
               />
+              <p className="text-[10px] text-slate-400 mt-1">يُقبل رقم سعودي (+966) أو مصري (+20) — ويُوحَّد تلقائياً للصيغة الدولية.</p>
             </div>
 
             <div>

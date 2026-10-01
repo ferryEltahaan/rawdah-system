@@ -66,13 +66,13 @@ export const initialFinancialAccounts: FinancialAccount[] = [
 ];
 
 // الموظفون الفعليون في النظام (نفس المعرّفات UUID الموجودة في السحابة)
-// كلمات المرور هنا هي مصدر الاسترجاع الوحيد لأن جدول profiles لا يخزنها
+// كلمات المرور مخزنة كبصمات SHA-64 مشفرة وليست نصاً صريحاً — انظر src/utils/passwordHash.ts
 export const initialProfiles: UserProfile[] = [
   {
     id: 'fe292e3d-9509-43d6-9561-aba950cb8540',
     fullName: 'المدير العام',
     username: 'admin',
-    password: 'admin123',
+    password: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
     phoneNumber: '+966500000001',
     whatsappNumber: '+966500000001',
     role: 'super_admin',
@@ -85,7 +85,7 @@ export const initialProfiles: UserProfile[] = [
     id: 'e48d53af-a5ae-49b2-a5ef-e91307ed02db',
     fullName: 'موظف المبيعات',
     username: 'sales',
-    password: 'sales123',
+    password: '6bc0a63cb29c92306020c0a6bbc358cc4628db277dc06e253535e126517ad637',
     phoneNumber: '+966500000002',
     whatsappNumber: '+966500000002',
     role: 'sales',
@@ -98,7 +98,7 @@ export const initialProfiles: UserProfile[] = [
     id: 'e3d8cda3-8752-41ef-aaf2-a5694549088c',
     fullName: 'مسؤول المخزون والتصاريح',
     username: 'inventory',
-    password: 'inventory123',
+    password: 'cd63ef271f9f5c81c3ac9e24e544f7e982360ebc027bf4e6b6960485b13f89e7',
     phoneNumber: '+966500000003',
     whatsappNumber: '+966500000003',
     role: 'inventory',
@@ -111,7 +111,7 @@ export const initialProfiles: UserProfile[] = [
     id: 'e3faa12e-0e95-4b05-bbd3-6ed8993d7ebc',
     fullName: 'المحاسب المالي',
     username: 'accountant',
-    password: 'acc123',
+    password: '2159157cf71913278f89c4a16bd7462481e41463ea0f8444523cd1c6887d1e4e',
     phoneNumber: '+966500000004',
     whatsappNumber: '+966500000004',
     role: 'accountant',
@@ -124,7 +124,7 @@ export const initialProfiles: UserProfile[] = [
     id: '2af77703-0fb8-4ed4-bd5c-98e4142baa4b',
     fullName: 'سارة المطيري',
     username: 'sara',
-    password: 'sara123',
+    password: '926b4b8a00cfab44b758450fa6bf188d4bf8541c2fd6b3d9b93d152d43a99f64',
     phoneNumber: '+966500000005',
     whatsappNumber: '+966500000005',
     role: 'sales',

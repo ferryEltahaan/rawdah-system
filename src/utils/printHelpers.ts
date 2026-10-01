@@ -164,7 +164,7 @@ export async function printOrderReceipt(order: SalesOrder, company: CompanySetti
       <tr><th>نوع الحجز</th><td>${order.orderType === 'instant' ? 'فوري' : 'حجز موعد'}</td></tr>
       <tr><th>تاريخ الزيارة المطلوب</th><td class="mono">${esc(order.targetDate)}</td></tr>
       <tr><th>وقت الفترة</th><td class="mono">${esc(order.targetTime)}</td></tr>
-      <tr><th>عدد التصاريح</th><td>${esc(order.permitsCount)} تصريح</td></tr>
+      <tr><th>عدد التصاريح</th><td>${esc(order.permitsCount)} تصريح${(order.permitsCountMale != null || order.permitsCountFemale != null) ? ` (${esc(order.permitsCountMale || 0)} ذكر / ${esc(order.permitsCountFemale || 0)} أنثى)` : ''}</td></tr>
       <tr><th>سعر التصريح الواحد</th><td class="mono">${esc(order.unitPrice)} ${esc(currency)}</td></tr>
       <tr><th>إجمالي المبلغ</th><td class="mono">${esc(order.totalAmount)} ${esc(currency)}</td></tr>
       <tr><th>المبلغ المدفوع</th><td class="mono">${esc(order.paidAmount)} ${esc(currency)}</td></tr>

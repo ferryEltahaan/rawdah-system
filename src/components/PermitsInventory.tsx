@@ -15,7 +15,8 @@ import {
   Trash2,
   HardDrive,
   MessageCircle,
-  Printer
+  Printer,
+  Share2
 } from 'lucide-react';
 import { Permit, Customer, UserProfile, SalesOrder } from '../types';
 import { DataService } from '../services/dataService';
@@ -23,6 +24,7 @@ import { currencySymbol, getOrderCurrency } from '../utils/currency';
 import { useToast } from './Toast';
 import { printPermit } from '../utils/printHelpers';
 import { compressImageFile, validateImageFile } from '../utils/imageHelpers';
+import { useImageActions } from '../hooks/useImageActions';
 import confetti from 'canvas-confetti';
 
 interface PermitsInventoryProps {
@@ -32,6 +34,8 @@ interface PermitsInventoryProps {
 
 export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser }) => {
   const toast = useToast();
+  // تحميل/مشاركة صور التصاريح بشكل يعمل على الجوال (data URL → Blob)
+  const imageActions = useImageActions();
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [selectedHour, setSelectedHour] = useState<number>(0);
@@ -840,17 +844,31 @@ ${companyName}`;
               <img src={previewPermit.imageUrl} alt={previewPermit.permitCode} className="w-full h-auto object-contain" />
             </div>
 
-            <div className="flex items-center justify-between text-xs text-slate-600">
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-600 flex-wrap">
               <span>الحالة: {previewPermit.status === 'available' ? 'متاح' : `مخصص لـ ${previewPermit.assignedCustomerName}`}</span>
-              <a
-                href={previewPermit.imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-emerald-700 hover:underline flex items-center gap-1 font-bold"
-              >
-                <Download className="w-3.5 h-3.5" />
-                تحميل الصورة
-              </a>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    imageActions.shareOrDownload(previewPermit.imageUrl, `تصريح_${previewPermit.permitCode}.png`, {
+                      title: `تصريح ${previewPermit.permitCode}`,
+                      text: `صورة تصريح رقم ${previewPermit.permitCode}`,
+                    })
+                  }
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 shadow-sm"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  مشاركة / إرسال
+                </button>
+                <button
+                  type="button"
+                  onClick={() => imageActions.download(previewPermit.imageUrl, `${previewPermit.permitCode}.png`)}
+                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-emerald-700 hover:bg-emerald-50 font-bold flex items-center gap-1"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  تحميل الصورة
+                </button>
+              </div>
             </div>
           </div>
         </div>

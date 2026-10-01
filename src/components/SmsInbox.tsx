@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { SmsMessage, SalesOrder, UserProfile } from '../types';
 import { DataService, AutoMatchOutcome, BatchIngestResult, DailyPaymentSummary } from '../services/dataService';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { currencySymbol, getOrderCurrency, providerCurrency } from '../utils/currency';
 import { useToast } from './Toast';
 import confetti from 'canvas-confetti';
@@ -54,6 +55,16 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
   const [batchBody, setBatchBody] = useState('');
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [isAutoMatching, setIsAutoMatching] = useState(false);
+
+  // بيانات الـ Webhook تُشتق دائماً من العميل السحابي المُهيأ — لا تُكتب ثوابت هنا
+  const sbClient = supabase as any;
+  const webhookUrl = sbClient?.supabaseUrl
+    ? `${String(sbClient.supabaseUrl).replace(/\/$/, '')}/rest/v1/sms_messages`
+    : '';
+  const webhookKey: string = sbClient?.supabaseKey || '';
+  const webhookHeaders = webhookKey
+    ? `apikey: ${webhookKey}\nAuthorization: Bearer ${webhookKey}\nContent-Type: application/json\nPrefer: return=minimal`
+    : '';
 
   const refreshData = () => {
     setMessages(DataService.getSmsMessages());
@@ -752,6 +763,13 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
               </p>
             </div>
 
+            {!isSupabaseConfigured || !webhookUrl ? (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>الربط السحابي غير مفعّل. افتح «إعدادات الربط السحابي» أولاً وأدخل بيانات Supabase ليظهر رابط الـ Webhook والترويسات هنا.</span>
+              </div>
+            ) : (
+              <>
             {/* Step 2: Target Webhook URL */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -759,11 +777,11 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
                 <h4 className="text-xs font-bold text-slate-900">رابط الـ Webhook المباشر (Target URL)</h4>
               </div>
               <div className="mr-7 flex items-center gap-2 bg-slate-900 text-emerald-400 p-3 rounded-2xl font-mono text-[11px] border border-slate-800">
-                <span className="flex-1 truncate">https://aeuavoqhrhzsxblrddlc.supabase.co/rest/v1/sms_messages</span>
+                <span className="flex-1 truncate">{webhookUrl}</span>
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText('https://aeuavoqhrhzsxblrddlc.supabase.co/rest/v1/sms_messages');
+                    navigator.clipboard.writeText(webhookUrl);
                     setCopiedField('url');
                     toast.success('تم نسخ رابط الـ Webhook بنجاح!');
                     setTimeout(() => setCopiedField(null), 2000);
@@ -783,15 +801,14 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
                 <h4 className="text-xs font-bold text-slate-900">ترويسات الاتصال (Request Headers)</h4>
               </div>
               <div className="mr-7 bg-slate-50 border border-slate-200 p-3 rounded-2xl font-mono text-[10px] text-slate-700 space-y-1 relative">
-                <div>apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</div>
-                <div>Authorization: Bearer eyJhbGciOiJIUzI1Ni...</div>
+                <div>apikey: {webhookKey.slice(0, 24)}...</div>
+                <div>Authorization: Bearer {webhookKey.slice(0, 20)}...</div>
                 <div>Content-Type: application/json</div>
                 <div>Prefer: return=minimal</div>
                 <button
                   type="button"
                   onClick={() => {
-                    const h = 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFldWF2b3Focmh6c3hibHJkZGxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjA2NTMsImV4cCI6MjEwNTkzNjY1M30.l3yyAef3pJIIGpJS_4zHfLeTINm_-QYYLyHSQNgYvxI\nAuthorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFldWF2b3Focmh6c3hibHJkZGxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNjA2NTMsImV4cCI6MjEwNTkzNjY1M30.l3yyAef3pJIIGpJS_4zHfLeTINm_-QYYLyHSQNgYvxI\nContent-Type: application/json\nPrefer: return=minimal';
-                    navigator.clipboard.writeText(h);
+                    navigator.clipboard.writeText(webhookHeaders);
                     setCopiedField('headers');
                     toast.success('تم نسخ الـ Headers بنجاح!');
                     setTimeout(() => setCopiedField(null), 2000);
@@ -803,6 +820,8 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
                 </button>
               </div>
             </div>
+              </>
+            )}
 
             {/* Step 4: JSON Payload */}
             <div className="space-y-2">

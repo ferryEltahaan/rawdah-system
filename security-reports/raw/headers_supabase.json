@@ -1,0 +1,99 @@
+{
+  "url": "https://aeuavoqhrhzsxblrddlc.supabase.co",
+  "final_url": "https://aeuavoqhrhzsxblrddlc.supabase.co",
+  "status": 404,
+  "score": 45,
+  "grade": "F",
+  "checks": [
+    {
+      "id": "https_redirect",
+      "status": "fail",
+      "severity": "high",
+      "detail": "HTTP responded 404 without HTTPS redirect"
+    },
+    {
+      "id": "hsts",
+      "status": "pass",
+      "severity": "info",
+      "detail": "max-age=31536000; includeSubDomains; preload"
+    },
+    {
+      "id": "csp",
+      "status": "fail",
+      "severity": "medium",
+      "detail": "No enforcing Content-Security-Policy"
+    },
+    {
+      "id": "clickjacking",
+      "status": "pass",
+      "severity": "info",
+      "detail": "XFO=SAMEORIGIN frame-ancestors=no"
+    },
+    {
+      "id": "xcto",
+      "status": "fail",
+      "severity": "low",
+      "detail": "X-Content-Type-Options missing or wrong: None"
+    },
+    {
+      "id": "referrer",
+      "status": "pass",
+      "severity": "info",
+      "detail": "Referrer-Policy: same-origin"
+    },
+    {
+      "id": "permissions",
+      "status": "fail",
+      "severity": "low",
+      "detail": "Permissions-Policy missing or wrong: None"
+    },
+    {
+      "id": "coop",
+      "status": "fail",
+      "severity": "low",
+      "detail": "Cross-Origin-Opener-Policy missing or wrong: None"
+    },
+    {
+      "id": "cookie___cf_bm",
+      "status": "pass",
+      "severity": "info",
+      "detail": "Cookie __cf_bm has Secure, HttpOnly, SameSite"
+    },
+    {
+      "id": "security_txt",
+      "status": "missing",
+      "severity": "info",
+      "detail": "/.well-known/security.txt -> 404 application/json"
+    },
+    {
+      "id": "robots_txt",
+      "status": "missing",
+      "severity": "info",
+      "detail": "/robots.txt -> 404 application/json"
+    },
+    {
+      "id": "webmanifest",
+      "status": "missing",
+      "severity": "info",
+      "detail": "/site.webmanifest -> 404 application/json"
+    },
+    {
+      "id": "webmanifest_alt",
+      "status": "missing",
+      "severity": "info",
+      "detail": "/manifest.webmanifest -> 404 application/json"
+    },
+    {
+      "id": "humans_txt",
+      "status": "missing",
+      "severity": "info",
+      "detail": "/humans.txt -> 404 application/json"
+    },
+    {
+      "id": "canonical",
+      "status": "missing",
+      "severity": "info",
+      "detail": "canonical link tag"
+    }
+  ]
+}

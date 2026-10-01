@@ -40,3 +40,9 @@ dist
 dist.zip
 node_modules
 
+# Scratch/test scripts (may contain secrets — keep local only)
+.ts_work/
+
+
+# Deploy copy (derived from root — never a source of truth)
+vercel_ready_files/

@@ -24,15 +24,27 @@ export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClos
     localStorage.getItem('rawdah_cloud_supabase_key') || ''
   );
   const [webhookSecret, setWebhookSecret] = useState(
-    localStorage.getItem('rawdah_sms_secret') || 'rawdah_sec_2026'
+    localStorage.getItem('rawdah_sms_secret') || ''
   );
   const [copied, setCopied] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
   if (!isOpen) return null;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
+      setValidationError('أدخل رابط المشروع والمفتاح العام (Anon Key) أولاً — لا يمكن الحفظ بدونهما.');
+      return;
+    }
+    if (!webhookSecret.trim()) {
+      setValidationError('أدخل مفتاح أمان Webhook خاص بك — لا يمكن تركه فارغاً.');
+      return;
+    }
+    setValidationError('');
+
     localStorage.setItem('rawdah_cloud_supabase_url', supabaseUrl.trim());
     localStorage.setItem('rawdah_cloud_supabase_key', supabaseKey.trim());
     localStorage.setItem('rawdah_sms_secret', webhookSecret.trim());
@@ -130,6 +142,13 @@ export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClos
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600 font-mono"
             />
           </div>
+
+          {validationError && (
+            <div className="p-3 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{validationError}</span>
+            </div>
+          )}
 
           {savedSuccess && (
             <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-2">
