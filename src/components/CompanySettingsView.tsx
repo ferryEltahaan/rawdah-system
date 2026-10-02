@@ -15,8 +15,9 @@ import { useToast } from './Toast';
 import { ImageUploadField } from './ImageUploadField';
 import confetti from 'canvas-confetti';
 
-// أدوات البذر والمسح متاحة لمدير النظام لإدارة البيانات
-const showDemoTools = true;
+// أدوات البذر والمسح متاحة في وضع التطوير المحلي فقط —
+// في الإنتاج المنشور تُخفى بالكامل لمنع مسح بيانات العميل السحابية عن طريق الخطأ (H-7).
+const showDemoTools = import.meta.env.DEV;
 
 const CURRENCY_OPTIONS = [
   { code: 'SAR', label: 'ريال سعودي (ر.س)' },
@@ -79,6 +80,12 @@ export const CompanySettingsView: React.FC = () => {
   };
 
   const handleWipeAll = async () => {
+    // ✅ حماية إضافية: مسح بيانات الإنتاج السحابية لا يفعله سوى المدير العام،
+    // حتى لو ظهر الزر في وضع التطوير.
+    if (DataService.getCurrentUser().role !== 'super_admin') {
+      toast.error('هذا الإجراء متاح للمدير العام فقط.');
+      return;
+    }
     const ok = await toast.confirm(
       'سيتم مسح جميع البيانات نهائياً (العملاء، الطلبات، التصاريح، الرسائل، السجلات) من الجهاز والسحابة.\nهذا الإجراء لا يمكن التراجع عنه.',
       { title: 'مسح جميع البيانات نهائياً', confirmLabel: 'نعم، امسح نهائياً', danger: true }

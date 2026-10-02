@@ -1865,8 +1865,9 @@ export class DataService {
   /** يُرجع عدد التصاريح التي أُرجعت للمخزون عند الإلغاء (صفر في غير الإلغاء) */
   static updateOrderStatus(orderId: string, status: SalesOrder['orderStatus']): number {
     const orders = this.getOrders();
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return 0;
+    const orderIndex = orders.findIndex(o => o.id === orderId);
+    if (orderIndex === -1) return 0;
+    const order = orders[orderIndex];
 
     // إلغاء الطلب يُرجع كل تصاريحه للمخزون تلقائياً — وإلا تبقى محجوزة بلا طلب وتضيع من البيع
     let releasedCount = 0;
@@ -1891,8 +1892,9 @@ export class DataService {
         if (permitsChanged) saveToStorage(STORAGE_KEYS.PERMITS, permits);
       }
 
-      const orderIndex = orders.findIndex(o => o.id === orderId);
-      orders[orderIndex] = { ...orders[orderIndex], assignedPermitIds: [] };
+      // ✅ الإلغاء يُحفظ محلياً (orderStatus) — قبل الإصلاح كان يُرسل للسحابة فقط
+      // فتبقى الشاشة المحلية تعرض الطلب "مؤكد" بعد إلغائه.
+      orders[orderIndex] = { ...orders[orderIndex], orderStatus: status, assignedPermitIds: [] };
 
       if (getIsConfigured() && getSupabase()) {
         const sb = getSupabase()!;
@@ -1912,6 +1914,9 @@ export class DataService {
           if (error) console.error('Cloud cancel-unlink order_permits error:', error);
         });
       }
+    } else {
+      // ✅ أي تغيير حالة آخر (تأكيد/مرتجع) كان أيضاً يُرسل للسحابة فقط — نُحفظه محلياً الآن.
+      orders[orderIndex] = { ...orders[orderIndex], orderStatus: status };
     }
 
     saveToStorage(STORAGE_KEYS.ORDERS, orders);
@@ -2515,6 +2520,25 @@ export class DataService {
       return { success: false, message: 'رسالة الدفع أو الطلب غير متاح للمطابقة' };
     }
 
+    // ✅ حاجز أمني: رسالة بلا مبلغ صحيح لا تُطابق أبداً — كانت تُغلق الطلب بدفعة صفرية
+    // وتُستهلك الرسالة (status='matched') فلا يمكن إعادة مطابقتها.
+    const orderCurrency = getOrderCurrency(order);
+    const smsAmount = Math.round(Math.max(0, Number(sms.parsedAmount) || 0) * 100) / 100;
+    if (smsAmount <= 0) {
+      return { success: false, message: 'الرسالة لا تحتوي على مبلغ صحيح — لا يمكن مطابقتها.' };
+    }
+
+    // ✅ حاجز المحاسبة: المبلغ لا يتجاوز المتبقي للطلب. التحويل الزائد (مثلاً 5000 على طلب 450)
+    // كان يُسجل بالكامل ويزيد الخزنة بالكامل ويخفي الفرق في Math.max(0,...) فلا يُسوَّى أبداً.
+    const remaining = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
+    if (smsAmount > remaining + 0.001) {
+      return {
+        success: false,
+        orderNumber: order.orderNumber,
+        message: `مبلغ التحويل (${smsAmount} ${currencySymbol(orderCurrency)}) أكبر من المتبقي على الطلب #${order.orderNumber} (${remaining} ${currencySymbol(orderCurrency)}). طابِق الطلب يدوياً أو قسّم المبلغ.`,
+      };
+    }
+
     sms.status = 'matched';
     sms.matchedOrderId = orderId;
     sms.matchedOrderNumber = order.orderNumber;
@@ -2522,15 +2546,15 @@ export class DataService {
     sms.matchedAt = new Date().toISOString();
     saveToStorage(STORAGE_KEYS.SMS, messages);
 
-    order.paidAmount += sms.parsedAmount || 0;
-    order.remainingAmount = Math.max(0, order.totalAmount - order.paidAmount);
+    order.paidAmount = Math.round((order.paidAmount + smsAmount) * 100) / 100;
+    order.remainingAmount = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
     if (order.paidAmount >= order.totalAmount) {
       order.orderStatus = 'confirmed';
     }
     // تسجيل السداد في سجل الطلب — مطابقات SMS بتُحسب للموظف اللي طابقها
     order.payments = [...(order.payments || []), {
       id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      amount: sms.parsedAmount || 0,
+      amount: smsAmount,
       method: 'sms',
       byUserId: currentUser.id,
       byUserName: currentUser.fullName,
@@ -2540,7 +2564,6 @@ export class DataService {
     saveToStorage(STORAGE_KEYS.ORDERS, orders);
 
     const accounts = this.getFinancialAccounts();
-    const orderCurrency = getOrderCurrency(order);
     // نفضّل الخزنة المطابقة لنفس العملة، وكل عملة لها خزنتها
     const account =
       accounts.find(a => a.provider === sms.parsedProvider && accountCurrency(a) === orderCurrency) ||
@@ -2550,7 +2573,7 @@ export class DataService {
       if (accountCurrency(account) !== orderCurrency) {
         currencyWarning = ` — تنبيه: عملة الخزنة (${currencySymbol(accountCurrency(account))}) تخالف عملة الطلب (${currencySymbol(orderCurrency)})`;
       }
-      account.currentBalance += sms.parsedAmount || 0;
+      account.currentBalance = Math.round((account.currentBalance + smsAmount) * 100) / 100;
       saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
 
       // Push updated balance to cloud
@@ -2648,6 +2671,26 @@ export class DataService {
     }
     order.payments = [...(order.payments || []), payment];
     saveToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    // ✅ السداد اليدوي (نقدي/تحويل مباشر) يجب أن يزيد رصيد الخزنة أيضاً —
+    // قبل الإصلاح كان يُسجَّل على الطلب فقط، فمجموع المحصّل في تقارير الموظفين
+    // كان دائماً أكبر من أرصدة الخزائن ولا يمكن تسويتهما أبداً.
+    const accounts = this.getFinancialAccounts();
+    const payCurrency = getOrderCurrency(order);
+    const cashAccount =
+      accounts.find(a => a.isActive && a.type === 'wallet' && accountCurrency(a) === payCurrency) ||
+      accounts.find(a => a.isActive && a.type === 'wallet');
+    if (cashAccount) {
+      cashAccount.currentBalance = Math.round((cashAccount.currentBalance + amountNum) * 100) / 100;
+      saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
+      if (getIsConfigured() && getSupabase()) {
+        getSupabase()!.from('financial_accounts').update({
+          current_balance: cashAccount.currentBalance,
+        }).eq('id', cashAccount.id).then(({ error }) => {
+          if (error) console.error('Cloud manual-payment account update error:', error);
+        });
+      }
+    }
 
     this.addAuditLog(
       currentUser.id,
