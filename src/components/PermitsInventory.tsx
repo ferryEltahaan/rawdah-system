@@ -18,7 +18,7 @@ import {
   Printer,
   Share2
 } from 'lucide-react';
-import { Permit, Customer, UserProfile, SalesOrder } from '../types';
+import { Permit, PermitStatus, Customer, UserProfile, SalesOrder } from '../types';
 import { DataService } from '../services/dataService';
 import { currencySymbol, getOrderCurrency } from '../utils/currency';
 import { useToast } from './Toast';
@@ -31,6 +31,31 @@ interface PermitsInventoryProps {
   currentUser: UserProfile;
   onOrderCreated?: () => void;
 }
+
+const PERMIT_STATUS_LABELS: Record<PermitStatus, string> = {
+  available: 'متاح للسحب',
+  assigned: 'مخصص',
+  locked: 'مقفل مؤقتاً',
+  returned: 'مُرجع للمخزون',
+  cancelled: 'ملغي',
+};
+
+const PERMIT_STATUS_BADGES: Record<PermitStatus, string> = {
+  available: 'bg-emerald-500 text-white',
+  assigned: 'bg-blue-600 text-white',
+  locked: 'bg-amber-500 text-white',
+  returned: 'bg-slate-500 text-white',
+  cancelled: 'bg-red-600 text-white',
+};
+
+// كل الحالات الخمس تُعد صراحةً حتى تكون الأجزاء المعروضة مساوية لإجمالي التصاريح
+const countPermitStatuses = (list: Permit[]) => ({
+  available: list.filter(p => p.status === 'available').length,
+  assigned: list.filter(p => p.status === 'assigned').length,
+  locked: list.filter(p => p.status === 'locked').length,
+  returned: list.filter(p => p.status === 'returned').length,
+  cancelled: list.filter(p => p.status === 'cancelled').length,
+});
 
 export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser }) => {
   const toast = useToast();
@@ -118,23 +143,20 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
     const slotPermits = permits.filter(
       p => p.slotDate === selectedDate && p.slotHour === hour && p.slotMinute === min
     );
-    const available = slotPermits.filter(p => p.status === 'available').length;
-    const assigned = slotPermits.filter(p => p.status === 'assigned').length;
-    return { total: slotPermits.length, available, assigned };
+    return { total: slotPermits.length, ...countPermitStatuses(slotPermits) };
   };
 
   const getHourStats = (hour: number) => {
     const hourPermits = permits.filter(
       p => p.slotDate === selectedDate && p.slotHour === hour
     );
-    const available = hourPermits.filter(p => p.status === 'available').length;
-    const assigned = hourPermits.filter(p => p.status === 'assigned').length;
-    return { total: hourPermits.length, available, assigned };
+    return { total: hourPermits.length, ...countPermitStatuses(hourPermits) };
   };
 
   const currentSlotPermits = permits.filter(
     p => p.slotDate === selectedDate && p.slotHour === selectedHour && p.slotMinute === selectedMinute
   );
+  const currentSlotStatuses = countPermitStatuses(currentSlotPermits);
 
   const handleClaim = async () => {
     if (!claimingPermit || !selectedCustomerId) return;
@@ -202,13 +224,10 @@ ${companyName}`;
     const urlsFromText = uploadUrls.split('\n').map(u => u.trim()).filter(u => u.length > 0);
     const urlsFromFiles = selectedFiles.map(f => f.url);
     
-    let finalUrls = [...urlsFromFiles, ...urlsFromText];
+    const finalUrls = [...urlsFromFiles, ...urlsFromText];
     if (finalUrls.length === 0) {
-      finalUrls = [
-        'https://images.unsplash.com/photo-1564769625905-50e93615e769?w=600&auto=format&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&auto=format&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?w=600&auto=format&fit=crop&q=80',
-      ];
+      toast.error('أضف صورة واحدة على الأقل من جهازك أو رابط صورة خارجي قبل الحفظ — لا يمكن رفع تصاريح فارغة إلى المخزون.');
+      return;
     }
 
     await DataService.addPermitsBulk(selectedDate, uploadHour, uploadMinute, finalUrls, uploadNotes);
@@ -230,10 +249,10 @@ ${companyName}`;
     o => o.customerId === selectedCustomerId && o.orderStatus !== 'cancelled'
   );
 
-  // Can upload permits (Admin & Inventory)
-  const canUpload = ['super_admin', 'inventory'].includes(currentUser.role);
-  // Can claim permits (Admin & Sales)
-  const canClaim = ['super_admin', 'sales'].includes(currentUser.role);
+  // Can upload permits (Admin & Inventory with create permission)
+  const canUpload = ['super_admin', 'inventory'].includes(currentUser.role) && (currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.create));
+  // Can claim permits (Admin & Sales with edit permission)
+  const canClaim = ['super_admin', 'sales'].includes(currentUser.role) && (currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.edit));
 
   return (
     <div className="space-y-6">
@@ -351,6 +370,13 @@ ${companyName}`;
                 <span>محجوز: {stats.assigned}</span>
                 <span>الإجمالي: {stats.total}</span>
               </div>
+              {(stats.locked > 0 || stats.returned > 0 || stats.cancelled > 0) && (
+                <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-2 mt-1.5">
+                  {stats.locked > 0 && <span>مقفل: {stats.locked}</span>}
+                  {stats.returned > 0 && <span>مُرجع: {stats.returned}</span>}
+                  {stats.cancelled > 0 && <span>ملغي: {stats.cancelled}</span>}
+                </div>
+              )}
             </button>
           );
         })}
@@ -375,6 +401,24 @@ ${companyName}`;
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
               <span>محجوز لعميل ({currentSlotPermits.filter(p => p.status === 'assigned').length})</span>
             </span>
+            {currentSlotStatuses.locked > 0 && (
+              <span className="flex items-center gap-1.5 font-bold text-amber-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <span>مقفل ({currentSlotStatuses.locked})</span>
+              </span>
+            )}
+            {currentSlotStatuses.returned > 0 && (
+              <span className="flex items-center gap-1.5 font-bold text-slate-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+                <span>مُرجع ({currentSlotStatuses.returned})</span>
+              </span>
+            )}
+            {currentSlotStatuses.cancelled > 0 && (
+              <span className="flex items-center gap-1.5 font-bold text-red-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+                <span>ملغي ({currentSlotStatuses.cancelled})</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -425,10 +469,8 @@ ${companyName}`;
                         <span>معاينة</span>
                       </button>
                       
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                        isAvailable ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white'
-                      }`}>
-                        {isAvailable ? 'متاح للسحب' : 'مخصص'}
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${PERMIT_STATUS_BADGES[permit.status]}`}>
+                        {PERMIT_STATUS_LABELS[permit.status]}
                       </span>
                     </div>
                   </div>
@@ -845,7 +887,11 @@ ${companyName}`;
             </div>
 
             <div className="flex items-center justify-between gap-2 text-xs text-slate-600 flex-wrap">
-              <span>الحالة: {previewPermit.status === 'available' ? 'متاح' : `مخصص لـ ${previewPermit.assignedCustomerName}`}</span>
+              <span>
+                الحالة: {previewPermit.status === 'assigned' && previewPermit.assignedCustomerName
+                  ? `مخصص لـ ${previewPermit.assignedCustomerName}`
+                  : PERMIT_STATUS_LABELS[previewPermit.status]}
+              </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"

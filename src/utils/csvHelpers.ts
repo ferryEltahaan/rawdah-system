@@ -14,8 +14,16 @@ export function todayRiyadh(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 }
 
-function escapeCsvCell(value: string | number | undefined | null): string {
-  const text = String(value ?? '');
+// أسماء العملاء تصل من نموذج تسجيل عام بدون مصادقة، فأي خلية تبدأ بأحد هذه
+// المحارف تتحول إلى صيغة تُنفَّذ في جهاز الموظف لحظة فتح الملف في إكسل
+const CSV_FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
+function escapeCsvCell(value: string | number | undefined | null, numeric: boolean = false): string {
+  let text = String(value ?? '');
+  // القيم الرقمية الحقيقية لا تحمل صيغاً، وبادئة الاقتباس كانت ستُفسد الأعمدة المالية
+  if (!numeric && typeof value === 'string' && CSV_FORMULA_PREFIX.test(text)) {
+    text = `'${text}`;
+  }
   if (/[",\n\r]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }
@@ -25,9 +33,14 @@ function escapeCsvCell(value: string | number | undefined | null): string {
 export function downloadCsv(
   filename: string,
   headers: string[],
-  rows: (string | number | undefined | null)[][]
+  rows: (string | number | undefined | null)[][],
+  numericColumns?: number[]
 ): void {
-  const lines = [headers, ...rows].map(row => row.map(escapeCsvCell).join(','));
+  const numeric = new Set(numericColumns ?? []);
+  const lines = [
+    headers.map(header => escapeCsvCell(header)).join(','),
+    ...rows.map(row => row.map((cell, index) => escapeCsvCell(cell, numeric.has(index))).join(',')),
+  ];
   // BOM في البداية حتى تفتح إكسل الملف بالعربية بشكل صحيح
   const csvContent = '\uFEFF' + lines.join('\r\n');
 

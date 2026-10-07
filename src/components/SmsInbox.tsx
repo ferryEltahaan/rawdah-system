@@ -58,10 +58,17 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
 
   // بيانات الـ Webhook تُشتق دائماً من العميل السحابي المُهيأ — لا تُكتب ثوابت هنا
   const sbClient = supabase as any;
-  const webhookUrl = sbClient?.supabaseUrl
-    ? `${String(sbClient.supabaseUrl).replace(/\/$/, '')}/rest/v1/sms_messages`
-    : '';
-  const webhookKey: string = sbClient?.supabaseKey || '';
+  const rawSbUrl =
+    (import.meta as any).env?.VITE_SUPABASE_URL ||
+    localStorage.getItem('rawdah_cloud_supabase_url') ||
+    sbClient?.supabaseUrl ||
+    '';
+  const webhookUrl = rawSbUrl ? `${String(rawSbUrl).replace(/\/$/, '')}/rest/v1/sms_messages` : '';
+  const webhookKey: string =
+    (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
+    localStorage.getItem('rawdah_cloud_supabase_key') ||
+    sbClient?.supabaseKey ||
+    '';
   const webhookHeaders = webhookKey
     ? `apikey: ${webhookKey}\nAuthorization: Bearer ${webhookKey}\nContent-Type: application/json\nPrefer: return=minimal`
     : '';

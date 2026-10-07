@@ -16,13 +16,12 @@ export interface UserProfile {
   id: string;
   fullName: string;
   username: string;
-  /** بصمة SHA-256 لكلمة المرور — لا تُخزن كلمة المرور نصاً صريحاً أبداً */
-  password: string;
   phoneNumber: string;
   whatsappNumber: string;
   role: UserRole;
   isActive: boolean;
   avatarUrl?: string;
+  password?: string;
   customPermissions: CustomPermissions;
   createdAt: string;
 }

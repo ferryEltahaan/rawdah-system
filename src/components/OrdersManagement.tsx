@@ -44,6 +44,11 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [orders, setOrders] = useState<SalesOrder[]>(DataService.getOrders());
   const [customers, setCustomers] = useState<Customer[]>(DataService.getCustomers());
   const [permits, setPermits] = useState<Permit[]>(DataService.getPermits());
+  const permitById = useMemo<Record<string, Permit>>(() => {
+    const map: Record<string, Permit> = {};
+    permits.forEach(p => { map[p.id] = p; });
+    return map;
+  }, [permits]);
   const toast = useToast();
   // تحميل/مشاركة صور التصاريح بشكل يعمل على الجوال (data URL → Blob)
   const imageActions = useImageActions();
@@ -502,10 +507,7 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
 
   const newOrderTotal = newPermitsCount * newUnitPrice;
   const newOrderRemaining = Math.max(0, newOrderTotal - newPaidAmount);
-
-  // خريطة معرّف التصريح → بياناته الكاملة (كود، صورة، موعد) لعرض المسحوبات في الإجراءات السريعة
-  const permitById: Record<string, Permit> = {};
-  permits.forEach(p => { permitById[p.id] = p; });
+  const canCreate = currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.create);
 
   return (
     <div className="space-y-6">
@@ -522,13 +524,15 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs shadow-md shadow-emerald-600/20 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إنشاء طلب بيع جديد</span>
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs shadow-md shadow-emerald-600/20 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إنشاء طلب بيع جديد</span>
+          </button>
+        )}
       </div>
 
       {/* Search & Filters */}

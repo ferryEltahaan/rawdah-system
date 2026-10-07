@@ -89,6 +89,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
   }, []);
 
+  // الربط السحابي يوجّه كل الكتابات القادمة لمشروع آخر — صلاحية المدير العام وحده
+  const canManageCloud = currentUser.role === 'super_admin';
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'super_admin':
@@ -150,26 +153,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2.5">
             
             {/* Cloud Status Toggle Button */}
-            <button
-              onClick={() => setShowCloudModal(true)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
-                isCloudActive
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                  : 'bg-slate-50 border-slate-200 hover:border-amber-400 text-slate-600 hover:text-amber-700'
-              }`}
-              title="إعدادات الربط السحابي مع Supabase"
-            >
-              <Cloud className={`w-4 h-4 ${isCloudActive ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span className="hidden sm:inline">
-                {isCloudActive ? 'السحابة متصلة' : 'الربط السحابي'}
-              </span>
-              {isCloudActive && lastSync && (
-                <span className="hidden md:inline text-[10px] font-bold text-emerald-600 bg-emerald-100/70 px-1.5 py-0.5 rounded-md font-mono" title="آخر مزامنة بيانات مع السحابة">
-                  {new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(lastSync))}
+            {canManageCloud && (
+              <button
+                onClick={() => setShowCloudModal(true)}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+                  isCloudActive
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                    : 'bg-slate-50 border-slate-200 hover:border-amber-400 text-slate-600 hover:text-amber-700'
+                }`}
+                title="إعدادات الربط السحابي مع Supabase"
+              >
+                <Cloud className={`w-4 h-4 ${isCloudActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline">
+                  {isCloudActive ? 'السحابة متصلة' : 'الربط السحابي'}
                 </span>
-              )}
-              <span className={`w-2 h-2 rounded-full ${isCloudActive ? 'bg-emerald-500 animate-ping' : 'bg-amber-400'}`}></span>
-            </button>
+                {isCloudActive && lastSync && (
+                  <span className="hidden md:inline text-[10px] font-bold text-emerald-600 bg-emerald-100/70 px-1.5 py-0.5 rounded-md font-mono" title="آخر مزامنة بيانات مع السحابة">
+                    {new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(lastSync))}
+                  </span>
+                )}
+                <span className={`w-2 h-2 rounded-full ${isCloudActive ? 'bg-emerald-500 animate-ping' : 'bg-amber-400'}`}></span>
+              </button>
+            )}
 
             {/* SMS Notification Bell */}
             <button
@@ -223,10 +228,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       {/* Cloud Setup Modal */}
-      <CloudSetupModal
-        isOpen={showCloudModal}
-        onClose={() => setShowCloudModal(false)}
-      />
+      {canManageCloud && (
+        <CloudSetupModal
+          isOpen={showCloudModal}
+          onClose={() => setShowCloudModal(false)}
+        />
+      )}
 
       {/* My Profile Modal — خدمة ذاتية لكل موظف */}
       <MyProfileModal

@@ -4,6 +4,22 @@ import { dataUrlToBlob, dataUrlToObjectUrl, canShareImageFile } from '../utils/i
 
 type ShareResult = 'shared' | 'downloaded' | 'unavailable' | 'cancelled';
 
+const UNSAFE_IMAGE_MESSAGE = 'رابط هذه الصورة غير مسموح أو تالف — المسموح روابط https أو صورة محفوظة داخل النظام فقط.';
+
+// عمود image_url يكتبه أي موظف مسجّل الدخول، فقيمة javascript: مخزّنة فيه تتحول إلى
+// XSS محفوظة لحظة فتح الرابط في نافذة أو تنزيله — لا نقبل إلا http(s) أو صورة data:image
+function isSafeImageUrl(raw: string | null | undefined): boolean {
+  const value = String(raw ?? '').trim();
+  if (!value || /[\u0000-\u001F\u007F]/.test(value)) return false;
+  if (/^data:/i.test(value)) return /^data:image\//i.test(value);
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * إجراءات الصور التي تعمل على الموبايل والكمبيوتر معاً.
  *
@@ -15,6 +31,10 @@ export function useImageActions() {
   const toast = useToast();
 
   const download = useCallback(async (imageUrl: string, filename: string): Promise<boolean> => {
+    if (!isSafeImageUrl(imageUrl)) {
+      toast.error(UNSAFE_IMAGE_MESSAGE);
+      return false;
+    }
     try {
       const isDataUrl = imageUrl.startsWith('data:');
       const objectUrl = isDataUrl ? await dataUrlToObjectUrl(imageUrl) : imageUrl;
@@ -62,6 +82,10 @@ export function useImageActions() {
     filename: string,
     options?: { title?: string; text?: string; downloadedMessage?: string }
   ): Promise<ShareResult> => {
+    if (!isSafeImageUrl(imageUrl)) {
+      toast.error(UNSAFE_IMAGE_MESSAGE);
+      return 'unavailable';
+    }
     const result = await share(imageUrl, filename, options);
     if (result === 'shared') {
       toast.success('تم فتح قائمة المشاركة — اختر واتساب لإرسال الصورة مباشرة.');
@@ -75,6 +99,10 @@ export function useImageActions() {
 
   // نسخ الصورة للحافظة (كمبيوتر فقط) — على الموبايل نحمّلها كحل بديل
   const copyOrDownload = useCallback(async (imageUrl: string, filename: string): Promise<void> => {
+    if (!isSafeImageUrl(imageUrl)) {
+      toast.error(UNSAFE_IMAGE_MESSAGE);
+      return;
+    }
     try {
       const response = await fetch(imageUrl);
       const blob = await response.blob();

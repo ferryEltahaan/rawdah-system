@@ -28,6 +28,7 @@ import { Customer, SalesOrder, UserProfile } from '../types';
 import { DataService } from '../services/dataService';
 import { currencySymbol, getOrderCurrency } from '../utils/currency';
 import { validateWhatsappNumber } from '../utils/phoneValidation';
+import { downloadCsv, formatDateTimeRiyadh, todayRiyadh } from '../utils/csvHelpers';
 import { useToast } from './Toast';
 import confetti from 'canvas-confetti';
 
@@ -197,25 +198,17 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
 
     const headers = ['الاسم الكامل', 'رقم الواتساب', 'الهاتف الإضافي', 'اسم حساب الواتساب / اللقب', 'ملاحظات', 'إجمالي الطلبات', 'تاريخ التسجيل'];
     const rows = customers.map(c => [
-      `"${c.fullName.replace(/"/g, '""')}"`,
-      `"${c.whatsappNumber}"`,
-      `"${c.additionalPhone || ''}"`,
-      `"${(c.nickname || '').replace(/"/g, '""')}"`,
-      `"${(c.notes || '').replace(/"/g, '""')}"`,
+      c.fullName,
+      c.whatsappNumber,
+      c.additionalPhone || '',
+      c.nickname || '',
+      c.notes || '',
       c.totalOrdersCount || 0,
-      `"${c.createdAt || ''}"`
+      c.createdAt ? formatDateTimeRiyadh(c.createdAt) : '',
     ]);
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `قائمة_العملاء_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('تم تصدير ملف العملاء بصيغة CSV بنجاح.');
+    downloadCsv(`customers-${todayRiyadh()}`, headers, rows, [5]);
+    toast.success(`تم تصدير ${customers.length} عميل إلى ملف CSV بنجاح.`);
   };
 
   // --- vCard (.vcf) & CSV Parser ---

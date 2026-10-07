@@ -18,7 +18,9 @@ import {
   FileX,
   User,
   UserPlus,
-  UserMinus
+  UserMinus,
+  Banknote,
+  Bell
 } from 'lucide-react';
 import { AuditLog } from '../types';
 import { DataService } from '../services/dataService';
@@ -41,6 +43,8 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE_CUSTOMER: 'تسجيل/استيراد عميل',
   UPDATE_CUSTOMER: 'تحديث بيانات عميل',
   DELETE_CUSTOMER: 'حذف عميل',
+  RECORD_PAYMENT: 'تسجيل سداد مباشر',
+  SEND_REMINDER: 'إرسال تذكير سداد',
 };
 
 const formatDetailValue = (value: unknown): string => {
@@ -206,6 +210,20 @@ export const AuditLogViewer: React.FC = () => {
             <span>حذف تصريح</span>
           </span>
         );
+      case 'RECORD_PAYMENT':
+        return (
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Banknote className="w-3 h-3 text-emerald-600" />
+            <span>تسجيل سداد مباشر</span>
+          </span>
+        );
+      case 'SEND_REMINDER':
+        return (
+          <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Bell className="w-3 h-3 text-amber-600" />
+            <span>إرسال تذكير سداد</span>
+          </span>
+        );
       default:
         return (
           <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] px-2.5 py-1 rounded-full font-bold">
@@ -269,6 +287,8 @@ export const AuditLogViewer: React.FC = () => {
           <option value="CLAIM_PERMIT">سحب وتخصيص تصريح</option>
           <option value="RETURN_PERMIT">إرجاع للمخزون</option>
           <option value="MATCH_SMS">مطابقة سداد SMS</option>
+          <option value="RECORD_PAYMENT">تسجيل سداد مباشر</option>
+          <option value="SEND_REMINDER">إرسال تذكير سداد</option>
           <option value="CREATE_ORDER">إنشاء طلب</option>
           <option value="UPDATE_ORDER">تحديث بيانات طلب</option>
           <option value="ARCHIVE_ORDER">أرشفة/استرجاع طلب</option>

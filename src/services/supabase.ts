@@ -4,6 +4,22 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // Supabase Client — يُعاد بناؤه فور تغيير بيانات الاتصال
 // ──────────────────────────────────────────────────────────────────────────────
 
+// بريد المصادقة الاصطناعي: المستخدمون يُنشأون يدوياً من لوحة Supabase بهذه
+// الصيغة حرفياً (database/schema.sql — القسم 10)، لذا تحويل اسم المستخدم إلى
+// بريد يجب أن يبقى متطابقاً في شاشة الدخول وفي تغيير كلمة المرور.
+export const AUTH_EMAIL_DOMAIN = 'rawdah.app';
+
+export function toAuthEmail(usernameOrEmail: string): string {
+  const v = usernameOrEmail.toLowerCase().trim();
+  return v.includes('@') ? v : `${v}@${AUTH_EMAIL_DOMAIN}`;
+}
+
+// مطابقة مرنة: البروفايلات المتزامنة من السحابة قد تخزّن اسم المستخدم كبريد
+// كامل (admin@rawdah.app) بينما يُعرض الاسم المختصر (admin) — نوحّد الصيغتين
+export function normUsername(u: string): string {
+  return (u || '').toLowerCase().trim().replace(new RegExp(`@${AUTH_EMAIL_DOMAIN.replace('.', '\\.')}$`), '');
+}
+
 // لا تُخزَّن أي بيانات اعتماد هنا أبداً. القيم تأتي من متغيرات البيئة
 // (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) أو من إعدادات الربط السحابي المحفوظة محلياً.
 // استخدام مفتاح service_role داخل كود المتصفح يمنح أي زائر صلاحية مدير كاملة على قاعدة البيانات.

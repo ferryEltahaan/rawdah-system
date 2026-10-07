@@ -16,6 +16,33 @@ interface CloudSetupModalProps {
   onClose: () => void;
 }
 
+// مفتاح service_role يُحفظ نصاً صريحاً في المتصفح ويبقى بعد الخروج ويمنح أي زائر
+// صلاحية مدير كاملة على قاعدة البيانات — نفك الـ JWT محلياً ولا نرسله لأي جهة
+function readAnonKeyRole(key: string): string | null {
+  const parts = key.trim().split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const decoded = atob(padded);
+    let payload: any;
+    try {
+      payload = JSON.parse(decoded);
+    } catch {
+      const json = decodeURIComponent(
+        decoded
+          .split('')
+          .map(char => '%' + ('00' + char.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      payload = JSON.parse(json);
+    }
+    return typeof payload?.role === 'string' ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
 export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClose }) => {
   const [supabaseUrl, setSupabaseUrl] = useState(
     localStorage.getItem('rawdah_cloud_supabase_url') || ''
@@ -43,6 +70,17 @@ export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClos
       setValidationError('أدخل مفتاح أمان Webhook خاص بك — لا يمكن تركه فارغاً.');
       return;
     }
+
+    const keyRole = readAnonKeyRole(supabaseKey);
+    if (keyRole === null) {
+      setValidationError('المفتاح المُدخل غير صالح — انسخ Anon Key كاملاً من إعدادات API في مشروع Supabase والصقه كما هو.');
+      return;
+    }
+    if (keyRole !== 'anon') {
+      setValidationError(`مرفوض: هذا المفتاح من نوع «${keyRole}» وليس المفتاح العام anon. مفتاح service_role يمنح صلاحية مدير كاملة على قاعدة البيانات ولا يجوز حفظه في المتصفح إطلاقاً.`);
+      return;
+    }
+
     setValidationError('');
 
     localStorage.setItem('rawdah_cloud_supabase_url', supabaseUrl.trim());
