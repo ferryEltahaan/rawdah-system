@@ -69,8 +69,12 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
     localStorage.getItem('rawdah_cloud_supabase_key') ||
     sbClient?.supabaseKey ||
     '';
+  // المفاتيح الجديدة (sb_publishable_/sb_secret_) تُرسل على هيدر apikey فقط ولا تُقبل على Authorization: Bearer
+  const isNewApiKey = webhookKey.startsWith('sb_');
   const webhookHeaders = webhookKey
-    ? `apikey: ${webhookKey}\nAuthorization: Bearer ${webhookKey}\nContent-Type: application/json\nPrefer: return=minimal`
+    ? isNewApiKey
+      ? `apikey: ${webhookKey}\nContent-Type: application/json\nPrefer: return=minimal`
+      : `apikey: ${webhookKey}\nAuthorization: Bearer ${webhookKey}\nContent-Type: application/json\nPrefer: return=minimal`
     : '';
 
   const refreshData = () => {
@@ -527,48 +531,71 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
                 اختر الطلب المراد سداد هذه الدفعة لحسابه:
               </label>
 
-              <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-200 rounded-2xl p-2 bg-slate-50">
-                {orders.filter(o => o.orderStatus !== 'cancelled').map(order => {
-                  const isSelected = selectedOrderId === order.id;
+                {(() => {
+                  const activeOrders = orders.filter(o => o.orderStatus !== 'cancelled');
+                  // نفضل الطلبات غير المسددة بالكامل والتي لها رصيد متبقي
+                  const unpaidCandidates = activeOrders.filter(o => {
+                    const remaining = Math.max(0, Math.round(((o.totalAmount || 0) - (o.paidAmount || 0)) * 100) / 100);
+                    return remaining > 0;
+                  });
+                  const displayOrders = unpaidCandidates.length > 0 ? unpaidCandidates : activeOrders;
 
-                  return (
-                    <button
-                      key={order.id}
-                      onClick={() => setSelectedOrderId(order.id)}
-                      className={`w-full text-right p-3 rounded-xl text-xs flex items-center justify-between transition-all border ${
-                        isSelected
-                          ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div>
-                        <div className="font-bold flex items-center gap-1.5">
-                          <span>#{order.orderNumber} - {order.customerName}</span>
-                          <span className="text-[10px] font-mono opacity-80 font-normal">({order.customerWhatsapp})</span>
-                        </div>
-                        <div className="text-[10px] opacity-80 mt-1">
-                          تاريخ: {order.targetDate} ({order.targetTime}) • {order.permitsCount} تصريح
-                        </div>
+                  if (displayOrders.length === 0) {
+                    return (
+                      <div className="text-center py-6 text-slate-500 text-xs font-medium">
+                        لا توجد طلبات مفتوحة متاحة للمطابقة حالياً.
                       </div>
+                    );
+                  }
 
-                      <div className="text-left font-mono">
-                        <div className="font-bold flex items-center gap-1.5 justify-end">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
-                            getOrderCurrency(order) === (matchingSms.parsedProvider ? providerCurrency(matchingSms.parsedProvider) : 'SAR')
-                              ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                              : 'bg-red-100 border-red-300 text-red-800'
-                          }`}>
-                            {currencySymbol(getOrderCurrency(order))}
-                            {getOrderCurrency(order) === (matchingSms.parsedProvider ? providerCurrency(matchingSms.parsedProvider) : 'SAR') ? ' ✓' : ' ✗'}
-                          </span>
-                          <span>{order.totalAmount}</span>
+                  return displayOrders.map(order => {
+                    const isSelected = selectedOrderId === order.id;
+                    const orderRemaining = Math.max(0, Math.round(((order.totalAmount || 0) - (order.paidAmount || 0)) * 100) / 100);
+                    const smsProviderCurr = matchingSms.parsedProvider ? providerCurrency(matchingSms.parsedProvider) : 'SAR';
+                    const orderCurr = getOrderCurrency(order);
+                    const currencyMatches = orderCurr === smsProviderCurr;
+
+                    return (
+                      <button
+                        key={order.id}
+                        type="button"
+                        onClick={() => setSelectedOrderId(order.id)}
+                        className={`w-full text-right p-3 rounded-xl text-xs flex items-center justify-between transition-all border ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-sm'
+                            : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold flex items-center gap-1.5">
+                            <span>#{order.orderNumber} - {order.customerName}</span>
+                            <span className="text-[10px] font-mono opacity-80 font-normal">({order.customerWhatsapp})</span>
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-1">
+                            تاريخ: {order.targetDate} ({order.targetTime}) • {order.permitsCount} تصريح
+                          </div>
                         </div>
-                        <div className="text-[10px] font-bold text-amber-600">متبقي: {order.remainingAmount}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+
+                        <div className="text-left font-mono">
+                          <div className="font-bold flex items-center gap-1.5 justify-end">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
+                              currencyMatches
+                                ? (isSelected ? 'bg-white/20 border-white/40 text-white' : 'bg-emerald-100 border-emerald-300 text-emerald-800')
+                                : (isSelected ? 'bg-rose-900/40 border-rose-300 text-rose-100' : 'bg-red-100 border-red-300 text-red-800')
+                            }`}>
+                              {currencySymbol(orderCurr)}
+                              {currencyMatches ? ' ✓' : ' ✗'}
+                            </span>
+                            <span>{order.totalAmount}</span>
+                          </div>
+                          <div className={`text-[10px] font-bold ${isSelected ? 'text-amber-200' : 'text-amber-600'}`}>
+                            متبقي: {orderRemaining} {currencySymbol(orderCurr)}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -809,7 +836,7 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
               </div>
               <div className="mr-7 bg-slate-50 border border-slate-200 p-3 rounded-2xl font-mono text-[10px] text-slate-700 space-y-1 relative">
                 <div>apikey: {webhookKey.slice(0, 24)}...</div>
-                <div>Authorization: Bearer {webhookKey.slice(0, 20)}...</div>
+                {!webhookKey.startsWith('sb_') && <div>Authorization: Bearer {webhookKey.slice(0, 20)}...</div>}
                 <div>Content-Type: application/json</div>
                 <div>Prefer: return=minimal</div>
                 <button

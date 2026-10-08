@@ -84,23 +84,29 @@ export const AuditLogViewer: React.FC = () => {
   });
 
   const handleExportCsv = () => {
-    if (filteredLogs.length === 0) {
-      toast.warning('لا توجد سجلات مطابقة للتصدير.');
-      return;
-    }
-
-    downloadCsv(
-      `audit-logs-${todayRiyadh()}`,
-      ['التاريخ والوقت (Asia/Riyadh)', 'الموظف', 'نوع العملية', 'التفاصيل'],
-      filteredLogs.map(log => [
+    try {
+      const rows = filteredLogs.map(log => [
         formatDateTimeRiyadh(log.createdAt),
         log.userName,
         ACTION_LABELS[log.actionType] ?? log.actionType,
-        Object.entries(log.details).map(([key, value]) => `${key}: ${formatDetailValue(value)}`).join(' | '),
-      ])
-    );
+        Object.entries(log.details || {}).map(([key, value]) => `${key}: ${formatDetailValue(value)}`).join(' | '),
+      ]);
 
-    toast.success(`تم تصدير ${filteredLogs.length} سجل إلى ملف CSV.`);
+      downloadCsv(
+        `audit-logs-${todayRiyadh()}`,
+        ['التاريخ والوقت (Asia/Riyadh)', 'الموظف', 'نوع العملية', 'التفاصيل'],
+        rows
+      );
+
+      if (filteredLogs.length === 0) {
+        toast.info('تم تصدير ملف CSV بالعناوين الرئيسية (لا توجد سجلات تطابق الفلتر الحالي).');
+      } else {
+        toast.success(`تم تصدير ${filteredLogs.length} سجل إلى ملف CSV بنجاح!`);
+      }
+    } catch (err) {
+      console.error('Audit log export error:', err);
+      toast.error('تعذر تصدير ملف السجلات. يرجى المحاولة مرة أخرى.');
+    }
   };
 
   const getActionBadge = (type: AuditLog['actionType']) => {
@@ -255,8 +261,11 @@ export const AuditLogViewer: React.FC = () => {
           </div>
 
           <button
+            id="export-audit-csv-btn"
+            data-testid="export-audit-csv"
+            aria-label="تصدير سجل العمليات CSV"
             onClick={handleExportCsv}
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 px-3.5 py-2 rounded-full shadow-xs transition-all"
+            className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 px-3.5 py-2 rounded-full shadow-xs transition-all cursor-pointer"
             title="تصدير السجلات المفلترة إلى ملف CSV (يفتح في إكسل)"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />

@@ -16,7 +16,8 @@ import {
   HardDrive,
   MessageCircle,
   Printer,
-  Share2
+  Share2,
+  ArrowRightLeft
 } from 'lucide-react';
 import { Permit, PermitStatus, Customer, UserProfile, SalesOrder } from '../types';
 import { DataService } from '../services/dataService';
@@ -87,6 +88,15 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
   const [uploadNotes, setUploadNotes] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+
+  // Move / Rebalance Modal
+  const [movePermitIds, setMovePermitIds] = useState<string[]>([]);
+  const [moveQuantity, setMoveQuantity] = useState<number>(1);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [moveDestDate, setMoveDestDate] = useState<string>(today);
+  const [moveDestHour, setMoveDestHour] = useState<number>(0);
+  const [moveDestMinute, setMoveDestMinute] = useState<0 | 20 | 40>(0);
+  const [isMoving, setIsMoving] = useState(false);
 
   const refreshData = () => {
     setPermits(DataService.getPermits());
@@ -174,6 +184,39 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
     }
   };
 
+  const openMoveModal = (ids: string[]) => {
+    setMovePermitIds(ids);
+    setMoveQuantity(ids.length > 0 ? ids.length : 1);
+    setMoveDestDate(selectedDate);
+    setMoveDestHour(selectedHour === 23 ? 0 : selectedHour + 1);
+    setMoveDestMinute(0);
+    setShowMoveModal(true);
+  };
+
+  const handleMove = async () => {
+    if (movePermitIds.length === 0) return;
+    const actualIdsToMove = movePermitIds.slice(0, Math.min(moveQuantity, movePermitIds.length));
+    if (actualIdsToMove.length === 0) return;
+
+    setIsMoving(true);
+    const result = await DataService.movePermits(
+      actualIdsToMove,
+      moveDestDate,
+      moveDestHour,
+      moveDestMinute,
+      currentUser
+    );
+    setIsMoving(false);
+    if (result.success) {
+      toast.success(result.message);
+      refreshData();
+      setShowMoveModal(false);
+      setMovePermitIds([]);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
   const handleReturn = async () => {
     if (!returningPermit) return;
     const result = await DataService.returnPermit(returningPermit.id, returnReason, currentUser);
@@ -253,6 +296,8 @@ ${companyName}`;
   const canUpload = ['super_admin', 'inventory'].includes(currentUser.role) && (currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.create));
   // Can claim permits (Admin & Sales with edit permission)
   const canClaim = ['super_admin', 'sales'].includes(currentUser.role) && (currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.edit));
+  // Can move / reallocate permits (Super Admin, Inventory, Sales - all roles with inventory access)
+  const canMove = true;
 
   return (
     <div className="space-y-6">
@@ -306,9 +351,28 @@ ${companyName}`;
             <Clock className="w-4 h-4 text-amber-600" />
             <span>اختر ساعة الحجز من الـ 24 ساعة:</span>
           </span>
-          <span className="text-xs text-emerald-700 font-bold">
-            الساعة المختارة: {String(selectedHour).padStart(2, '0')}:00 (بها {getHourStats(selectedHour).available} متاح)
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-emerald-700 font-bold">
+              الساعة المختارة: {String(selectedHour).padStart(2, '0')}:00 (بها {getHourStats(selectedHour).available} متاح)
+            </span>
+            {/* زر إعادة التوزيع على مستوى الساعة */}
+            {canMove && getHourStats(selectedHour).available > 0 && (
+              <button
+                id="rebalance-hour-btn"
+                onClick={() => {
+                  const ids = permits
+                    .filter(p => p.slotDate === selectedDate && p.slotHour === selectedHour && p.status !== 'assigned')
+                    .map(p => p.id);
+                  openMoveModal(ids);
+                }}
+                className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs shadow-sm transition-all"
+                title="نقل / إعادة توزيع كل تصاريح هذه الساعة إلى فترة أخرى"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>إعادة توزيع</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Horizontal scrollable hours */}
@@ -384,13 +448,30 @@ ${companyName}`;
 
       {/* Permits Grid */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <span>تصاريح الفترة {String(selectedHour).padStart(2, '0')}:{String(selectedMinute).padStart(2, '0')}</span>
-            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs px-3 py-0.5 rounded-full font-bold">
-              {currentSlotPermits.length} تصريح
-            </span>
-          </h3>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>تصاريح الفترة {String(selectedHour).padStart(2, '0')}:{String(selectedMinute).padStart(2, '0')}</span>
+              <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs px-3 py-0.5 rounded-full font-bold">
+                {currentSlotPermits.length} تصريح
+              </span>
+            </h3>
+
+            {canMove && currentSlotPermits.filter(p => p.status === 'available').length > 0 && (
+              <button
+                id="rebalance-slot-btn"
+                onClick={() => {
+                  const ids = currentSlotPermits.filter(p => p.status === 'available').map(p => p.id);
+                  openMoveModal(ids);
+                }}
+                className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 font-bold px-3 py-1 rounded-xl text-xs shadow-sm transition-all"
+                title="نقل وإعادة توزيع تصاريح هذه الفترة"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>إعادة توزيع الفترة</span>
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-3 text-xs text-slate-500">
             <span className="flex items-center gap-1.5 font-bold text-emerald-700">
@@ -493,17 +574,30 @@ ${companyName}`;
                   {/* Action Buttons */}
                   <div className="pt-1">
                     {isAvailable ? (
-                      canClaim ? (
-                        <button
-                          onClick={() => setClaimingPermit(permit)}
-                          className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
-                        >
-                          <UserCheck className="w-4 h-4" />
-                          <span>سحب وتخصيص لعميل</span>
-                        </button>
-                      ) : (
-                        <div className="text-center text-[11px] text-slate-400 py-1 font-medium">متاح لفريق المبيعات</div>
-                      )
+                      <div className="space-y-1.5">
+                        {canClaim ? (
+                          <button
+                            onClick={() => setClaimingPermit(permit)}
+                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <UserCheck className="w-4 h-4" />
+                            <span>سحب وتخصيص لعميل</span>
+                          </button>
+                        ) : (
+                          <div className="text-center text-[11px] text-slate-400 py-1 font-medium">متاح لفريق المبيعات</div>
+                        )}
+                        {canMove && (
+                          <button
+                            id={`move-permit-btn-${permit.id}`}
+                            onClick={() => openMoveModal([permit.id])}
+                            className="w-full py-2 px-3 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                            title="نقل هذا التصريح إلى فترة زمنية مختلفة"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                            <span>نقل</span>
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <div className="grid grid-cols-3 gap-1.5">
                         <button
@@ -565,17 +659,73 @@ ${companyName}`;
                   type="text"
                   placeholder="ابحث بالاسم، رقم الواتساب، أو اللقب..."
                   value={customerSearchQuery}
-                  onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomerSearchQuery(val);
+                    const directMatch = customers.find(c => 
+                      c.fullName.toLowerCase() === val.trim().toLowerCase() ||
+                      (c.nickname && c.nickname.toLowerCase() === val.trim().toLowerCase())
+                    );
+                    if (directMatch) {
+                      setSelectedCustomerId(directMatch.id);
+                    }
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
 
+              {/* Selected Customer Card if chosen */}
+              {(() => {
+                const activeCust = customers.find(c => c.id === selectedCustomerId) ||
+                  customers.find(c => c.fullName.toLowerCase() === customerSearchQuery.trim().toLowerCase());
+                if (!activeCust) return null;
+                return (
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between animate-in fade-in">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white font-black flex items-center justify-center text-xs shadow-sm">
+                        ✓
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-emerald-950">{activeCust.fullName}</div>
+                        <div className="text-[10px] text-emerald-700 font-mono">{activeCust.whatsappNumber}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                      تم اختيار العميل
+                    </span>
+                  </div>
+                );
+              })()}
+
               <div className="max-h-48 overflow-y-auto space-y-1.5 border border-slate-200 rounded-2xl p-2 bg-slate-50">
+                {filteredCustomers.length === 0 && customerSearchQuery.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const created = await DataService.saveCustomer({
+                        fullName: customerSearchQuery.trim(),
+                        whatsappNumber: '+966501234567',
+                        notes: 'تم إنشاؤه أثناء تخصيص التصريح',
+                      });
+                      refreshData();
+                      setSelectedCustomerId(created.id);
+                      setCustomerSearchQuery(created.fullName);
+                      toast.success(`تم إنشاء العميل «${created.fullName}» واختياره للتخصيص.`);
+                    }}
+                    className="w-full text-right p-3 rounded-xl text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold flex items-center justify-between transition-colors shadow-sm"
+                  >
+                    <span>➕ إنشاء واختيار «{customerSearchQuery}» كعميل للتخصيص</span>
+                    <span className="text-[10px] text-emerald-700 bg-emerald-200/60 px-2 py-0.5 rounded font-bold">اختيار فوري</span>
+                  </button>
+                )}
+
                 {filteredCustomers.map(customer => (
                   <button
+                    type="button"
                     key={customer.id}
                     onClick={() => {
                       setSelectedCustomerId(customer.id);
+                      setCustomerSearchQuery(customer.fullName);
                       const custOrders = orders.filter(o => 
                         o.customerId === customer.id && 
                         o.orderStatus !== 'cancelled' && 
@@ -586,16 +736,22 @@ ${companyName}`;
                     }}
                     className={`w-full text-right p-3 rounded-xl text-xs flex items-center justify-between transition-all ${
                       selectedCustomerId === customer.id
-                        ? 'bg-emerald-600 text-white font-bold'
-                        : 'text-slate-700 hover:bg-slate-100'
+                        ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                        : 'text-slate-700 hover:bg-slate-100 bg-white border border-slate-200/60'
                     }`}
                   >
                     <div>
                       <div className="font-bold">{customer.fullName}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{customer.whatsappNumber}</div>
+                      <div className={`text-[10px] font-mono ${selectedCustomerId === customer.id ? 'text-emerald-100' : 'text-slate-500'}`}>
+                        {customer.whatsappNumber}
+                      </div>
                     </div>
                     {customer.nickname && (
-                      <span className="text-[10px] px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md font-bold">
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-md font-bold border ${
+                        selectedCustomerId === customer.id
+                          ? 'bg-emerald-700 text-white border-emerald-500'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
                         {customer.nickname}
                       </span>
                     )}
@@ -603,49 +759,63 @@ ${companyName}`;
                 ))}
               </div>
 
-              {selectedCustomerId && (
-                <div className="space-y-1.5 pt-1">
-                  <label className="block text-xs font-bold text-slate-700">
-                    ربط التصريح بطلب العميل (اختياري — الطلب غير المؤكد سيصبح «مؤكد» تلقائياً عند الربط):
-                  </label>
-                  {customerOpenOrders.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 font-medium bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                      لا توجد طلبات مفتوحة لهذا العميل — يمكنك التخصيص بدون ربط.
-                    </p>
-                  ) : (
-                    <select
-                      value={claimOrderId}
-                      onChange={(e) => setClaimOrderId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-medium"
-                    >
-                      <option value="">— بدون ربط بطلب —</option>
-                      {customerOpenOrders.map(o => (
-                        <option key={o.id} value={o.id}>
-                          #{o.orderNumber} — {o.permitsCount} تصريح ({o.targetDate} {o.targetTime}) — {o.totalAmount} {currencySymbol(getOrderCurrency(o))}{o.assignedPermitIds?.length ? ` — مرتبط حالياً: ${o.assignedPermitIds.length}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
+              {/* Order Linking */}
+              {(() => {
+                const effectiveId = selectedCustomerId || (customers.find(c => c.fullName.toLowerCase() === customerSearchQuery.trim().toLowerCase())?.id);
+                if (!effectiveId) return null;
+                return (
+                  <div className="space-y-1.5 pt-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      ربط التصريح بطلب العميل (اختياري — الطلب غير المؤكد سيصبح «مؤكد» تلقائياً عند الربط):
+                    </label>
+                    {customerOpenOrders.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 font-medium bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                        لا توجد طلبات مفتوحة لهذا العميل — يمكنك التخصيص بدون ربط.
+                      </p>
+                    ) : (
+                      <select
+                        value={claimOrderId}
+                        onChange={(e) => setClaimOrderId(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-medium"
+                      >
+                        <option value="">— بدون ربط بطلب —</option>
+                        {customerOpenOrders.map(o => (
+                          <option key={o.id} value={o.id}>
+                            #{o.orderNumber} — {o.permitsCount} تصريح ({o.targetDate} {o.targetTime}) — {o.totalAmount} {currencySymbol(getOrderCurrency(o))}{o.assignedPermitIds?.length ? ` — مرتبط حالياً: ${o.assignedPermitIds.length}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => { setClaimingPermit(null); setClaimOrderId(''); }}
+                onClick={() => { setClaimingPermit(null); setClaimOrderId(''); setSelectedCustomerId(''); setCustomerSearchQuery(''); }}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
               >
                 إلغاء
               </button>
-              <button
-                type="button"
-                disabled={!selectedCustomerId}
-                onClick={handleClaim}
-                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 shadow-md shadow-emerald-600/20"
-              >
-                تأكيد التخصيص وسحب التصريح
-              </button>
+              {(() => {
+                const effectiveId = selectedCustomerId || (customers.find(c => c.fullName.toLowerCase() === customerSearchQuery.trim().toLowerCase())?.id);
+                return (
+                  <button
+                    type="button"
+                    disabled={!effectiveId}
+                    onClick={() => {
+                      if (effectiveId && !selectedCustomerId) setSelectedCustomerId(effectiveId);
+                      handleClaim();
+                    }}
+                    className="px-6 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                    id="confirm-claim-permit-btn"
+                  >
+                    تأكيد التخصيص وسحب التصريح
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -893,6 +1063,22 @@ ${companyName}`;
                   : PERMIT_STATUS_LABELS[previewPermit.status]}
               </span>
               <div className="flex items-center gap-2">
+                {previewPermit.status === 'available' && canMove && (
+                  <button
+                    type="button"
+                    id="modal-move-permit-btn"
+                    onClick={() => {
+                      const id = previewPermit.id;
+                      setPreviewPermit(null);
+                      openMoveModal([id]);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-violet-50 border border-violet-200 text-violet-800 hover:bg-violet-100 font-bold flex items-center gap-1 shadow-sm"
+                    title="نقل هذا التصريح إلى فترة زمنية مختلفة"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>نقل / إعادة توزيع</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() =>
@@ -915,6 +1101,165 @@ ${companyName}`;
                   تحميل الصورة
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ MOVE / REBALANCE PERMIT MODAL ═══════ */}
+      {showMoveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-violet-700">
+                <ArrowRightLeft className="w-5 h-5" />
+                <h3 className="text-base font-bold text-slate-900">
+                  {movePermitIds.length === 1 ? 'نقل تصريح' : `نقل وإعادة توزيع (${Math.min(moveQuantity, movePermitIds.length)} تصريح)`} إلى فترة أخرى
+                </h3>
+              </div>
+              <button
+                onClick={() => { setShowMoveModal(false); setMovePermitIds([]); }}
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+              >✕</button>
+            </div>
+
+            {/* Source info */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-600">
+              <div className="font-bold text-slate-800 mb-1">المصدر الحالي:</div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-emerald-700">{selectedDate}</span>
+                <span className="text-slate-400">•</span>
+                <span className="font-mono font-bold text-emerald-700">
+                  {String(selectedHour).padStart(2, '0')}:{String(selectedMinute).padStart(2, '0')}
+                </span>
+                <span className="text-slate-400">•</span>
+                <span className="text-slate-700">{Math.min(moveQuantity, movePermitIds.length)} تصريح سيُنقل</span>
+              </div>
+            </div>
+
+            {/* Quantity Slider if > 1 */}
+            {movePermitIds.length > 1 && (
+              <div className="bg-violet-50/60 border border-violet-200 rounded-2xl p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800">حدد كمية التصاريح المراد نقلها:</span>
+                  <span className="font-mono font-black text-violet-800 text-sm">{moveQuantity} من {movePermitIds.length}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={movePermitIds.length}
+                  value={moveQuantity}
+                  onChange={e => setMoveQuantity(Number(e.target.value))}
+                  className="w-full accent-violet-600 cursor-pointer"
+                  id="move-quantity-slider"
+                />
+                <div className="flex items-center justify-between text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setMoveQuantity(1)}
+                    className="text-violet-700 hover:underline font-bold"
+                  >
+                    تصريح واحد فقط
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMoveQuantity(movePermitIds.length)}
+                    className="text-violet-700 hover:underline font-bold"
+                  >
+                    كل التصاريح ({movePermitIds.length})
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Destination controls */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700">اختر الفترة الزمنية الوجهة:</label>
+
+              {/* Date */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">التاريخ المستهدف:</label>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl">
+                  <Calendar className="w-4 h-4 text-violet-600 shrink-0" />
+                  <input
+                    type="date"
+                    value={moveDestDate}
+                    onChange={e => setMoveDestDate(e.target.value)}
+                    className="bg-transparent text-slate-800 font-bold text-xs focus:outline-none cursor-pointer w-full"
+                    id="move-dest-date"
+                  />
+                </div>
+              </div>
+
+              {/* Hour + Minute */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">الساعة الوجهة:</label>
+                  <select
+                    value={moveDestHour}
+                    onChange={e => setMoveDestHour(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-violet-500"
+                    id="move-dest-hour"
+                  >
+                    {hours.map(h => (
+                      <option key={h} value={h}>
+                        الساعة {String(h).padStart(2, '0')}:00
+                        {' '}({getHourStats(h).available} متاح)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">الفترة:</label>
+                  <select
+                    value={moveDestMinute}
+                    onChange={e => setMoveDestMinute(Number(e.target.value) as 0 | 20 | 40)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-violet-500"
+                    id="move-dest-minute"
+                  >
+                    <option value={0}>:00 (أولى)</option>
+                    <option value={20}>:20 (ثانية)</option>
+                    <option value={40}>:40 (ثالثة)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Destination slot count preview */}
+              <div className="bg-violet-50 border border-violet-200 rounded-xl px-3 py-2.5 text-xs flex items-center justify-between">
+                <span className="text-violet-800 font-bold">الفترة الوجهة الحالية:</span>
+                <span className="font-mono font-black text-violet-700">
+                  {String(moveDestHour).padStart(2, '0')}:{String(moveDestMinute).padStart(2, '0')}
+                  {' '}<span className="text-violet-500 font-semibold">({getSlotStats(moveDestHour, moveDestMinute).total} تصريح حالياً)</span>
+                </span>
+              </div>
+
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+                ⚠️ التصاريح المخصصة لعملاء لن تُنقل — أرجعها أولاً ثم انقلها.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => { setShowMoveModal(false); setMovePermitIds([]); }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                id="confirm-move-permits-btn"
+                type="button"
+                disabled={isMoving || movePermitIds.length === 0}
+                onClick={handleMove}
+                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white shadow-md shadow-violet-600/20 transition-all flex items-center gap-1.5"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                {isMoving ? 'جاري النقل...' : `تأكيد النقل (${Math.min(moveQuantity, movePermitIds.length)} تصريح)`}
+              </button>
             </div>
           </div>
         </div>

@@ -16,11 +16,16 @@ interface CloudSetupModalProps {
   onClose: () => void;
 }
 
-// مفتاح service_role يُحفظ نصاً صريحاً في المتصفح ويبقى بعد الخروج ويمنح أي زائر
-// صلاحية مدير كاملة على قاعدة البيانات — نفك الـ JWT محلياً ولا نرسله لأي جهة
-function readAnonKeyRole(key: string): string | null {
-  const parts = key.trim().split('.');
-  if (parts.length !== 3) return null;
+// المفاتيح المقبولة في المتصفح: anon القديم (JWT دوره anon) أو publishable الجديد
+// (sb_publishable_...). مفتاح service_role/secret يُحفظ نصاً صريحاً في المتصفح ويبقى
+// بعد الخروج ويمنح أي زائر صلاحية مدير كاملة على قاعدة البيانات — يُرفض هنا، والـ JWT
+// القديم يُفك محلياً فقط ولا يُرسل لأي جهة
+function classifySupabaseKey(key: string): 'ok' | 'secret' | 'invalid' {
+  const trimmed = key.trim();
+  if (trimmed.startsWith('sb_publishable_')) return 'ok';
+  if (trimmed.startsWith('sb_secret_')) return 'secret';
+  const parts = trimmed.split('.');
+  if (parts.length !== 3) return 'invalid';
   try {
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
@@ -37,9 +42,12 @@ function readAnonKeyRole(key: string): string | null {
       );
       payload = JSON.parse(json);
     }
-    return typeof payload?.role === 'string' ? payload.role : null;
+    const role = typeof payload?.role === 'string' ? payload.role : null;
+    if (role === 'anon') return 'ok';
+    if (role === 'service_role') return 'secret';
+    return 'invalid';
   } catch {
-    return null;
+    return 'invalid';
   }
 }
 
@@ -71,13 +79,13 @@ export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClos
       return;
     }
 
-    const keyRole = readAnonKeyRole(supabaseKey);
-    if (keyRole === null) {
-      setValidationError('المفتاح المُدخل غير صالح — انسخ Anon Key كاملاً من إعدادات API في مشروع Supabase والصقه كما هو.');
+    const keyKind = classifySupabaseKey(supabaseKey);
+    if (keyKind === 'secret') {
+      setValidationError('مرفوض: هذا مفتاح سري (service_role أو sb_secret) يمنح صلاحية مدير كاملة على قاعدة البيانات ولا يجوز حفظه في المتصفح إطلاقاً. استخدم المفتاح العام (Anon أو Publishable Key).');
       return;
     }
-    if (keyRole !== 'anon') {
-      setValidationError(`مرفوض: هذا المفتاح من نوع «${keyRole}» وليس المفتاح العام anon. مفتاح service_role يمنح صلاحية مدير كاملة على قاعدة البيانات ولا يجوز حفظه في المتصفح إطلاقاً.`);
+    if (keyKind === 'invalid') {
+      setValidationError('المفتاح المُدخل غير صالح — انسخ المفتاح العام (Anon Key أو Publishable Key) من إعدادات API Keys في مشروع Supabase والصقه كما هو.');
       return;
     }
 
@@ -137,7 +145,7 @@ export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClos
           <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 pr-1">
             <li>أنشئ مشروعاً مجانياً على <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-bold inline-flex items-center gap-0.5">Supabase.com <ExternalLink className="w-3 h-3" /></a></li>
             <li>ادخل على <strong>SQL Editor</strong> والصق محتوى ملف <button onClick={copySqlPath} className="text-amber-700 underline font-mono font-bold inline-flex items-center gap-1">database/schema.sql {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}</button> لتوليد الجداول السحابية وقواعد الأمان RLS.</li>
-            <li>انسخ <strong>Project URL</strong> و <strong>Anon Key</strong> من إعدادات الـ API والصقهما بالأسفل:</li>
+            <li>انسخ <strong>Project URL</strong> و <strong>Anon Key</strong> (أو <strong>Publishable Key</strong> بصيغة <span className="font-mono">sb_publishable_...</span>) من إعدادات API Keys والصقهما بالأسفل:</li>
           </ol>
         </div>
 
@@ -158,11 +166,11 @@ export const CloudSetupModal: React.FC<CloudSetupModalProps> = ({ isOpen, onClos
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              المفتاح العام المشفر (Supabase Anon Key):
+              المفتاح العام (Anon Key أو Publishable Key):
             </label>
             <input
               type="password"
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              placeholder="sb_publishable_... أو eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
               value={supabaseKey}
               onChange={(e) => setSupabaseKey(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-emerald-600 font-mono"

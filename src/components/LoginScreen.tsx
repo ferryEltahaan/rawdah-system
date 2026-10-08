@@ -11,7 +11,6 @@ import {
 import { UserProfile } from '../types';
 import { DataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { hashPassword, verifyPassword } from '../utils/passwordHash';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
@@ -40,76 +39,52 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     // مهلة قصيرة لإتاحة رسم حالة التحميل
     await new Promise((resolve) => setTimeout(resolve, 400));
 
-    let found = DataService.getProfiles().find(
+    // لا توجد حسابات افتراضية داخل حزمة الكود: كل موظف يُنشئه المدير من لوحة
+    // Supabase (database/schema.sql — القسم 10)، والمصادقة تجري على الخادم فقط.
+    if (!isSupabaseConfigured || !supabase) {
+      setErrorMessage('النظام غير مرتبط بخدمة المصادقة. يرجى ربط Supabase من شاشة الإعدادات قبل تسجيل الدخول.');
+      setIsLoading(false);
+      return;
+    }
+
+    const profile = DataService.getProfiles().find(
       (p) => normUsername(p.username) === normUsername(username)
     );
 
-    // ── 1) المصادقة الحقيقية عبر Supabase Auth (بعد تهيئة مستخدمي Auth من لوحة التحكم) ──
-    if (isSupabaseConfigured && supabase && found) {
-      try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: toAuthEmail(username),
-          password,
-        });
-        if (!error) {
-          // جلسة مصادقة سارية الآن — مزامنة كاملة تجلب الموظفين بأحدث حالة
-          await DataService.syncFromCloud();
-          found =
-            DataService.getProfiles().find(
-              (p) => normUsername(p.username) === normUsername(username)
-            ) || found;
-          if (!found.isActive) {
-            await supabase.auth.signOut();
-            setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
-            setIsLoading(false);
-            return;
-          }
-          DataService.setCurrentUser(found);
-          onLoginSuccess(found);
-          setIsLoading(false);
-          return;
-        }
-        // فشل المصادقة السحابية (مستخدم Auth غير مُهيأ بعد أو كلمة مرور خاطئة)
-        // → نتابع للتحقق المحلي الاحتياطي حتى لا يتعطل الدخول في فترة الانتقال
-      } catch {
-        // انقطاع شبكة أثناء المصادقة → نتابع محلياً
-      }
+    if (!profile) {
+      setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
+      setIsLoading(false);
+      return;
     }
 
-    // ── 2) التحقق المحلي الاحتياطي (كلمات المرور المُبصمة في التخزين المحلي) ──
-    if (found) {
-      if (!found.isActive) {
-        setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
-        setIsLoading(false);
-        return;
-      }
-      // بوابة أمنية: حساب من غير بصمة كلمة مرور لا يُسمح له بالدخول إطلاقاً —
-      // وإلا صار أي باسورد مقبول لو فشل الـ Auth السحابي (ثغرة تجاوز)
-      if (!found.password) {
-        setErrorMessage('هذا الحساب لا يحتوي على كلمة مرور محفوظة. تواصل مع الإدارة لإعادة تعيين كلمة المرور.');
-        setIsLoading(false);
-        return;
-      }
-      const { matches, needsMigration } = await verifyPassword(password, found.password);
-      if (!matches) {
-        setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
-        setIsLoading(false);
-        return;
-      }
-      // ترحيل تدريجي: استبدال النص الصريح القديم ببصمة مشفرة فور أول دخول ناجح
-      if (needsMigration) {
-        const upgraded = { ...found, password: await hashPassword(password) };
-        await DataService.saveProfile(upgraded);
-        DataService.setCurrentUser(upgraded);
-        onLoginSuccess(upgraded);
-        setIsLoading(false);
-        return;
-      }
-      DataService.setCurrentUser(found);
-      onLoginSuccess(found);
-    } else {
+    // ── المصادقة عبر Supabase Auth (التحقق يجري على الخادم، لا في المتصفح) ──
+    const { error } = await supabase.auth.signInWithPassword({
+      email: toAuthEmail(username),
+      password,
+    });
+
+    if (error) {
       setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
+      setIsLoading(false);
+      return;
     }
+
+    // جلسة مصادقة سارية الآن — مزامنة كاملة تجلب الموظفين بأحدث حالة
+    await DataService.syncFromCloud();
+    const found =
+      DataService.getProfiles().find(
+        (p) => normUsername(p.username) === normUsername(username)
+      ) || profile;
+
+    if (!found.isActive) {
+      await supabase.auth.signOut();
+      setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+      setIsLoading(false);
+      return;
+    }
+
+    DataService.setCurrentUser(found);
+    onLoginSuccess(found);
     setIsLoading(false);
   };
 
@@ -158,14 +133,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* بيانات الدخول */}
+          {/* دخول آمن */}
           <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70 text-[11px] text-slate-600 space-y-1.5">
             <div className="font-bold text-emerald-900 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>دخول آمن:</span>
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              أدخل اسم المستخدم وكلمة المرور المعتمدين من الإدارة. كلمات المرور مشفرة ولا تظهر لأي شخص.
+              يتم التحقق من اسم المستخدم وكلمة المرور على خادم Supabase، ولا تُخزَّن كلمات المرور في هذا التطبيق.
             </p>
           </div>
 
@@ -225,6 +200,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 </>
               )}
             </button>
+
+            {/* Public Registration Link */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-slate-500 font-medium">عميل جديد وترغب بالتسجيل؟</span>
+              <a
+                href="?register=true"
+                className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 transition-colors"
+                id="public-registration-link"
+              >
+                <span>تسجيل عميل جديد / إنشاء حساب</span>
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </form>
 
         </div>

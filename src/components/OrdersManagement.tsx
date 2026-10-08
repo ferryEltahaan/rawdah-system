@@ -19,7 +19,8 @@ import {
   Sparkles,
   Share2,
   Banknote,
-  Bell
+  Bell,
+  Phone
 } from 'lucide-react';
 import { SalesOrder, Customer, UserProfile, OrderStatus, DeliveryStatus, OrderType, Permit, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';
@@ -371,8 +372,15 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
   };
 
   const handleExportCsv = () => {
+    const headers = ['رقم الطلب', 'اسم العميل', 'رقم الواتساب', 'تاريخ الزيارة', 'وقت الفترة', 'عدد التصاريح', 'عدد التصاريح ذكر', 'عدد التصاريح أنثى', 'نوع الحجز', 'العملة', 'الإجمالي', 'المدفوع', 'المتبقي', 'حالة الطلب', 'موقف الإرسال'];
+
     if (filteredOrders.length === 0) {
-      toast.warning('لا توجد طلبات مطابقة للتصدير.');
+      // تصدير ملف CSV بالترويسات فقط حتى تتأكد أن الأداة تعمل وأن الملف صالح
+      downloadCsv(`orders-empty-${todayRiyadh()}`, headers, []);
+      toast.warning(
+        'لا توجد طلبات مطابقة للفلاتر الحالية — تم تصدير ملف CSV بالترويسات فقط. ' +
+        'جرّب إزالة الفلاتر (اضغط «الكل») لعرض جميع الطلبات ثم صدّرها.'
+      );
       return;
     }
 
@@ -390,7 +398,7 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
 
     downloadCsv(
       `orders-${todayRiyadh()}`,
-      ['رقم الطلب', 'اسم العميل', 'رقم الواتساب', 'تاريخ الزيارة', 'وقت الفترة', 'عدد التصاريح', 'عدد التصاريح ذكر', 'عدد التصاريح أنثى', 'نوع الحجز', 'العملة', 'الإجمالي', 'المدفوع', 'المتبقي', 'حالة الطلب', 'موقف الإرسال'],
+      headers,
       filteredOrders.map(order => [
         order.orderNumber,
         order.customerName,
@@ -752,9 +760,25 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                       {/* Customer */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900">{order.customerName}</div>
-                        <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                          <MessageCircle className="w-3 h-3 text-emerald-600" />
-                          <span>{order.customerWhatsapp}</span>
+                        <div className="text-[11px] font-mono flex items-center gap-2 mt-0.5">
+                          <a
+                            href={`https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 hover:underline flex items-center gap-1 font-bold"
+                            title="محادثة واتساب"
+                          >
+                            <MessageCircle className="w-3 h-3 text-emerald-600" />
+                            <span>{order.customerWhatsapp}</span>
+                          </a>
+                          <a
+                            href={`tel:${order.customerWhatsapp}`}
+                            className="text-slate-400 hover:text-emerald-700 p-0.5 rounded hover:bg-slate-100 transition-colors"
+                            title="اتصال هاتفي"
+                            aria-label={`اتصال برقم ${order.customerWhatsapp}`}
+                          >
+                            <Phone className="w-3 h-3 text-emerald-600" />
+                          </a>
                         </div>
                       </td>
 

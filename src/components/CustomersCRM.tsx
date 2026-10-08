@@ -86,8 +86,10 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
     setIsSyncing(true);
     try {
       await DataService.syncFromCloud();
-      refreshData();
-      toast.success('تمت المزامنة مع السحابة وتحديث سجل العملاء بنجاح!');
+      const updatedCusts = DataService.getCustomers();
+      setCustomers(updatedCusts);
+      setOrders(DataService.getOrders());
+      toast.success(`تمت المزامنة مع السحابة وتحديث سجل العملاء بنجاح (${updatedCusts.length} عميل)!`);
     } catch (e) {
       toast.error('حدث خطأ أثناء المزامنة السحابية.');
     } finally {
@@ -503,113 +505,151 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
         />
       </div>
 
-      {/* Customers Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredCustomers.map(customer => (
-          <div 
-            key={customer.id} 
-            className="bg-white border border-slate-200 rounded-3xl p-5 space-y-4 hover:border-emerald-500/50 transition-all shadow-sm hover:shadow-md group"
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 border border-emerald-200 font-black text-sm flex items-center justify-center shadow-sm">
-                  {customer.fullName.charAt(0)}
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">{customer.fullName}</h3>
-                  {customer.nickname && (
-                    <div className="flex items-center gap-1 text-[11px] text-amber-700 font-semibold mt-0.5">
-                      <Tag className="w-3 h-3" />
-                      <span>{customer.nickname}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleOpenEdit(customer)}
-                  className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors border border-slate-200 shadow-sm"
-                  title="تعديل بيانات العميل"
-                >
-                  <Edit className="w-3.5 h-3.5" />
-                </button>
-                {currentUser.role === 'super_admin' && (
-                  <button
-                    onClick={() => setDeletingCustomer(customer)}
-                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-100 text-slate-500 hover:text-rose-700 transition-colors border border-slate-200 shadow-sm"
-                    title="حذف العميل نهائياً"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Contact Details */}
-            <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-              <div className="flex items-center justify-between text-slate-700">
-                <span className="text-slate-500 flex items-center gap-1.5 font-medium">
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>الواتساب:</span>
-                </span>
-                <a
-                  href={`https://wa.me/${customer.whatsappNumber.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-emerald-700 hover:underline font-bold flex items-center gap-1"
-                >
-                  {customer.whatsappNumber}
-                </a>
-              </div>
-
-              {customer.additionalPhone && (
-                <div className="flex items-center justify-between text-slate-700">
-                  <span className="text-slate-500 flex items-center gap-1.5 font-medium">
-                    <Phone className="w-3.5 h-3.5 text-blue-600" />
-                    <span>رقم إضافي:</span>
-                  </span>
-                  <span className="font-mono text-slate-800">{customer.additionalPhone}</span>
-                </div>
+      {/* Customers Data Table */}
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-right border-collapse">
+            <thead>
+              <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-600">
+                <th className="py-3 px-4">العميل</th>
+                <th className="py-3 px-4">الواتساب / الهاتف</th>
+                <th className="py-3 px-4">اللقب / الشهرة</th>
+                <th className="py-3 px-4">الملاحظات</th>
+                <th className="py-3 px-4 text-center">إجمالي الطلبات</th>
+                <th className="py-3 px-4 text-center">إجمالي المسدد</th>
+                <th className="py-3 px-4 text-center">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs text-slate-800">
+              {filteredCustomers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-xs">
+                    لا يوجد عملاء مطابقين للبحث
+                  </td>
+                </tr>
+              ) : (
+                filteredCustomers.map(customer => (
+                  <tr key={customer.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-2xl bg-emerald-100 text-emerald-800 border border-emerald-200 font-black text-xs flex items-center justify-center shrink-0">
+                          {customer.fullName.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900">{customer.fullName}</div>
+                          <div className="text-[10px] text-slate-400">سجل: {customer.createdAt ? formatDateTimeRiyadh(customer.createdAt) : '—'}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="space-y-1 font-mono text-xs">
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={`https://wa.me/${customer.whatsappNumber.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 hover:underline font-bold flex items-center gap-1"
+                            title="محادثة واتساب"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>{customer.whatsappNumber}</span>
+                          </a>
+                          <a
+                            href={`tel:${customer.whatsappNumber}`}
+                            className="text-slate-400 hover:text-emerald-700 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                            title="اتصال هاتفي مباشر"
+                            aria-label={`اتصال برقم ${customer.whatsappNumber}`}
+                          >
+                            <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                          </a>
+                        </div>
+                        {customer.additionalPhone && (
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <a
+                              href={`tel:${customer.additionalPhone}`}
+                              className="text-slate-600 hover:text-blue-700 hover:underline flex items-center gap-1"
+                              title="اتصال بالهاتف الإضافي"
+                              aria-label={`اتصال بالرقم الإضافي ${customer.additionalPhone}`}
+                            >
+                              <Phone className="w-3 h-3 text-blue-600" />
+                              <span>{customer.additionalPhone}</span>
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {customer.nickname ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold">
+                          <Tag className="w-3 h-3" />
+                          <span>{customer.nickname}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 max-w-xs">
+                      {customer.notes ? (
+                        <p className="text-[11px] text-slate-600 line-clamp-2" title={customer.notes}>
+                          {customer.notes}
+                        </p>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-bold">
+                      <span className="px-2.5 py-1 bg-slate-100 rounded-xl text-slate-800 text-xs">
+                        {customer.totalOrdersCount}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <div className="flex items-center gap-1 justify-center flex-wrap">
+                        {(() => {
+                          const chips = spentByCustomer(customer.id);
+                          if (chips.length === 0) {
+                            return <span className="font-mono font-bold text-slate-400">0 ر.س</span>;
+                          }
+                          return chips.map(chip => (
+                            <span
+                              key={chip.code}
+                              className={`font-mono font-bold px-2 py-0.5 rounded-full border text-[10px] ${
+                                chip.code === 'SAR'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                              }`}
+                            >
+                              {chip.amount} {currencySymbol(chip.code)}
+                            </span>
+                          ));
+                        })()}
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEdit(customer)}
+                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors border border-slate-200 shadow-sm"
+                          title="تعديل بيانات العميل"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        {currentUser.role === 'super_admin' && (
+                          <button
+                            onClick={() => setDeletingCustomer(customer)}
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-100 text-slate-500 hover:text-rose-700 transition-colors border border-slate-200 shadow-sm"
+                            title="حذف العميل نهائياً"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
-
-              {customer.notes && (
-                <p className="text-[11px] text-slate-600 italic bg-slate-50 p-2.5 rounded-xl border border-slate-200 line-clamp-3">
-                  {customer.notes}
-                </p>
-              )}
-            </div>
-
-            {/* Orders Statistics */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-[11px]">
-              <div className="flex items-center gap-1 text-slate-500 font-medium">
-                <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
-                <span>إجمالي الطلبات: <strong className="text-slate-800">{customer.totalOrdersCount}</strong></span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                {(() => {
-                  const chips = spentByCustomer(customer.id);
-                  if (chips.length === 0) {
-                    return <span className="font-mono font-bold text-slate-400">0 ر.س</span>;
-                  }
-                  return chips.map(chip => (
-                    <span
-                      key={chip.code}
-                      className={`font-mono font-bold px-2 py-0.5 rounded-full border ${
-                        chip.code === 'SAR'
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-amber-50 text-amber-800 border-amber-200'
-                      }`}
-                      title={`إجمالي المسدد بال${chip.code === 'SAR' ? 'ريال' : 'جنيه'}`}
-                    >
-                      {chip.amount} {currencySymbol(chip.code)}
-                    </span>
-                  ));
-                })()}
-              </div>
-            </div>
-          </div>
-        ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* MODAL 1: SHARE SELF-REGISTRATION LINK */}

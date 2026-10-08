@@ -59,7 +59,7 @@ const ROLE_REFERENCE_ROWS: { role: UserRole; label: string; labelClass: string; 
 export const EmployeesAndRolesView: React.FC = () => {
   const toast = useToast();
   const [profiles, setProfiles] = useState<UserProfile[]>(DataService.getProfiles());
-  const currentUserId = DataService.getCurrentUser().id;
+  const currentUserId = DataService.getCurrentUser()?.id ?? '';
 
   // Add / Edit Modal
   const [showModal, setShowModal] = useState(false);
@@ -70,6 +70,7 @@ export const EmployeesAndRolesView: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [role, setRole] = useState<UserRole>('sales');
+  const [isActive, setIsActive] = useState<boolean>(true);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [permissions, setPermissions] = useState<CustomPermissions>(ROLE_DEFAULT_PERMISSIONS.sales);
   const [isSaving, setIsSaving] = useState(false);
@@ -97,7 +98,10 @@ export const EmployeesAndRolesView: React.FC = () => {
       return;
     }
 
-    const { localSaved } = await DataService.saveProfile({ ...profile, isActive: !profile.isActive });
+    const updatedProfile = { ...profile, isActive: !profile.isActive };
+    setProfiles(prev => prev.map(p => (p.id === profile.id || p.username === profile.username) ? updatedProfile : p));
+
+    const { localSaved } = await DataService.saveProfile(updatedProfile);
     refreshData();
     if (!localSaved) return;
 
@@ -123,6 +127,7 @@ export const EmployeesAndRolesView: React.FC = () => {
     );
     if (!approved) return;
 
+    setProfiles(prev => prev.filter(p => p.id !== profile.id && p.username !== profile.username));
     const { localSaved, notFound, cloudFailed } = await DataService.deleteProfile(profile.id);
     refreshData();
 
@@ -149,6 +154,7 @@ export const EmployeesAndRolesView: React.FC = () => {
     setPhoneNumber('');
     setWhatsappNumber('');
     setRole('sales');
+    setIsActive(true);
     setAvatarUrl('');
     setPermissions(ROLE_DEFAULT_PERMISSIONS.sales);
     setShowModal(true);
@@ -162,6 +168,7 @@ export const EmployeesAndRolesView: React.FC = () => {
     setPhoneNumber(profile.phoneNumber);
     setWhatsappNumber(profile.whatsappNumber);
     setRole(profile.role);
+    setIsActive(profile.isActive ?? true);
     setAvatarUrl(profile.avatarUrl || '');
     setPermissions(profile.customPermissions);
     setShowModal(true);
@@ -302,7 +309,7 @@ export const EmployeesAndRolesView: React.FC = () => {
         phoneNumber: phoneNumber.trim(),
         whatsappNumber: whatsappNumber.trim(),
         role,
-        isActive: existing?.isActive ?? true,
+        isActive: editingProfileId ? isActive : true,
         avatarUrl: avatarUrl.trim() || undefined,
         customPermissions: finalPermissions,
       });
@@ -409,6 +416,8 @@ export const EmployeesAndRolesView: React.FC = () => {
               <div className="flex items-center flex-wrap justify-end gap-x-2.5 gap-y-1">
                 <button
                   onClick={() => handleOpenPermissionsModal(p)}
+                  id={`employee-permissions-btn-${p.username || p.id}`}
+                  aria-label={`تعديل صلاحيات ${p.fullName}`}
                   className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                 >
                   <ShieldCheck className="w-3 h-3" />
@@ -417,6 +426,8 @@ export const EmployeesAndRolesView: React.FC = () => {
 
                 <button
                   onClick={() => handleOpenEdit(p)}
+                  id={`employee-edit-btn-${p.username || p.id}`}
+                  aria-label={`تعديل بيانات ${p.fullName}`}
                   className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1"
                 >
                   <Pencil className="w-3 h-3" />
@@ -425,6 +436,8 @@ export const EmployeesAndRolesView: React.FC = () => {
 
                 <button
                   onClick={() => handleToggleActive(p)}
+                  id={`employee-toggle-active-btn-${p.username || p.id}`}
+                  aria-label={`${p.isActive ? 'إيقاف' : 'تفعيل'} ${p.fullName}`}
                   className="text-[11px] font-bold text-slate-600 hover:text-emerald-700 underline"
                 >
                   {p.isActive ? 'إيقاف مؤقت' : 'تفعيل'}
@@ -433,6 +446,8 @@ export const EmployeesAndRolesView: React.FC = () => {
                 <button
                   onClick={() => handleDelete(p)}
                   disabled={p.id === currentUserId}
+                  id={`employee-delete-btn-${p.username || p.id}`}
+                  aria-label={`حذف ${p.fullName}`}
                   title={p.id === currentUserId ? 'لا يمكنك حذف حسابك الذي تسجّل الدخول به' : `حذف حساب ${p.fullName} نهائياً`}
                   className="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -741,6 +756,32 @@ export const EmployeesAndRolesView: React.FC = () => {
                 ))}
               </div>
             </div>
+
+            {editingProfileId && (
+              <div className="flex items-center justify-between p-3.5 rounded-2xl border bg-slate-50 border-slate-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700">حالة الحساب:</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    isActive
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-100 text-rose-800 border border-rose-200'
+                  }`}>
+                    {isActive ? 'نشط' : 'موقوف'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsActive(!isActive)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm ${
+                    isActive
+                      ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  }`}
+                >
+                  {isActive ? 'إيقاف الحساب' : 'تفعيل الحساب'}
+                </button>
+              </div>
+            )}
 
             <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-2.5 leading-relaxed">
               يبدأ الموظف الجديد بحالة «نشط» ويمكنه الدخول فوراً باسم المستخدم وكلمة المرور من هذه الشاشة.

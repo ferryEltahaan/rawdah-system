@@ -14,7 +14,6 @@ import {
 import {
   initialCompanySettings,
   initialFinancialAccounts,
-  initialProfiles,
   initialCustomers,
   generateInitialPermits,
   initialOrders,
@@ -262,7 +261,7 @@ export class DataService {
       if (localStorage.getItem(FLAG) === 'done') return;
 
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const profiles = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, initialProfiles);
+      const profiles = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
       const idMap: Record<string, string> = {};
 
       const migratedProfiles = profiles.map(p => {
@@ -354,8 +353,8 @@ export class DataService {
       }
 
       // 2. Sync Customers
-      const { data: custs } = await sb.from('customers').select('*').order('created_at', { ascending: false });
-      if (custs !== null && custs !== undefined) {
+      const { data: custs, error: custsErr } = await sb.from('customers').select('*').order('created_at', { ascending: false });
+      if (!custsErr && custs !== null && custs !== undefined) {
         const mappedCusts: Customer[] = custs.map(c => ({
           id: c.id,
           fullName: c.full_name,
@@ -367,13 +366,12 @@ export class DataService {
           totalSpent: parseFloat(c.total_spent || '0'),
           createdAt: c.created_at,
         }));
-        // بعد تقفيل RLS تصبح القراءة المجهولة (قبل تسجيل الدخول) فاضية — لا تُمسح القوائم المحلية بنتيجة صفرية
-        if (mappedCusts.length > 0) saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts);
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts);
       }
 
       // 3. Sync Permits
-      const { data: permList } = await sb.from('permits').select('*').order('created_at', { ascending: false });
-      if (permList !== null && permList !== undefined) {
+      const { data: permList, error: permErr } = await sb.from('permits').select('*').order('created_at', { ascending: false });
+      if (!permErr && permList !== null && permList !== undefined) {
         const mappedPermits: Permit[] = permList.map(p => ({
           id: p.id,
           permitCode: p.permit_code,
@@ -391,12 +389,12 @@ export class DataService {
           notes: p.notes,
           createdAt: p.created_at,
         }));
-        if (mappedPermits.length > 0) saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits);
+        saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits);
       }
 
       // 4. Sync Orders
-      const { data: orderList } = await sb.from('sales_orders').select('*').order('created_at', { ascending: false });
-      if (orderList !== null && orderList !== undefined) {
+      const { data: orderList, error: orderErr } = await sb.from('sales_orders').select('*').order('created_at', { ascending: false });
+      if (!orderErr && orderList !== null && orderList !== undefined) {
         // جلب أسماء العملاء
         const customers = this.getCustomers();
         const custMap: Record<string, Customer> = {};
@@ -449,12 +447,12 @@ export class DataService {
             createdAt: o.created_at,
           };
         });
-        if (mappedOrders.length > 0) saveToStorage(STORAGE_KEYS.ORDERS, mappedOrders);
+        saveToStorage(STORAGE_KEYS.ORDERS, mappedOrders);
       }
 
       // 5. Sync SMS Messages
-      const { data: smsList } = await sb.from('sms_messages').select('*').order('received_at', { ascending: false }).limit(200);
-      if (smsList !== null && smsList !== undefined) {
+      const { data: smsList, error: smsErr } = await sb.from('sms_messages').select('*').order('received_at', { ascending: false }).limit(200);
+      if (!smsErr && smsList !== null && smsList !== undefined) {
         const mappedSms: SmsMessage[] = smsList.map(s => ({
           id: s.id,
           sender: s.sender,
@@ -470,13 +468,13 @@ export class DataService {
           matchedAt: s.matched_at,
           receivedAt: s.received_at,
         }));
-        if (mappedSms.length > 0) saveToStorage(STORAGE_KEYS.SMS, mappedSms);
+        saveToStorage(STORAGE_KEYS.SMS, mappedSms);
       }
 
       // 6. Sync Profiles (لا نستبدل المحلي إلا إذا كانت السحابة تحتوي بيانات فعلية)
       const { data: profileList } = await sb.from('profiles').select('*').order('created_at', { ascending: true });
       if (profileList && profileList.length > 0) {
-        const storedProfiles = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, initialProfiles);
+        const storedProfiles = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
         const localPasswords: Record<string, string> = {};
         storedProfiles.forEach(p => { localPasswords[p.id] = p.password; });
 
@@ -484,8 +482,9 @@ export class DataService {
           id: p.id,
           fullName: p.full_name,
           username: p.username || '',
-          // كلمات المرور لا تُخزن أبداً في السحابة — نحافظ على المحلية
-          password: localPasswords[p.id] || initialProfiles.find(d => d.username === p.username)?.password || '',
+          // كلمات المرور لا تُخزن أبداً في السحابة ولا في هذا التطبيق — المصادقة
+          // كلها عبر Supabase Auth، فلا حقل كلمة مرور في البروفايل المُزامن.
+          password: localPasswords[p.id] || '',
           phoneNumber: p.phone_number || '',
           whatsappNumber: p.whatsapp_number || '',
           role: p.role,
@@ -1002,7 +1001,7 @@ export class DataService {
 
   // --- Financial Accounts ---
   static getFinancialAccounts(): FinancialAccount[] {
-    return loadFromStorage(STORAGE_KEYS.ACCOUNTS, []);
+    return loadFromStorage(STORAGE_KEYS.ACCOUNTS, initialFinancialAccounts);
   }
 
   static async saveFinancialAccount(account: Omit<FinancialAccount, 'id' | 'createdAt'> & { id?: string }): Promise<FinancialAccount> {
@@ -1055,17 +1054,13 @@ export class DataService {
   }
 
   static getProfiles(): UserProfile[] {
-    const stored = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, initialProfiles);
-    // دمج ترقيعي: الحسابات المحفوظة قبل إضافة كلمة المرور تستكملها من الافتراضية بنفس المستخدم
-    return stored.map(p => {
-      if (p.password) return p;
-      const fallback = initialProfiles.find(d => d.id === p.id || d.username === p.username);
-      return { ...p, password: fallback?.password || '' };
-    });
+    // لا حسابات افتراضية في الحزمة: القائمة تأتي من السحابة (syncFromCloud) أو
+    // من التخزين المحلي لما زامنته سابقاً. لا كلمات مرور هنا إطلاقاً.
+    return loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
   }
 
-  static getCurrentUser(): UserProfile {
-    return loadFromStorage(STORAGE_KEYS.CURRENT_USER, initialProfiles[0]);
+  static getCurrentUser(): UserProfile | null {
+    return loadFromStorage<UserProfile | null>(STORAGE_KEYS.CURRENT_USER, null);
   }
 
   static setCurrentUser(user: UserProfile): void {
@@ -1074,8 +1069,8 @@ export class DataService {
 
   static async saveProfile(data: Omit<UserProfile, 'id' | 'createdAt'> & { id?: string }): Promise<{ profile: UserProfile; localSaved: boolean }> {
     const profiles = this.getProfiles();
-    const id = data.id || generateUUID();
-    const existing = profiles.find(p => p.id === id);
+    const existing = profiles.find(p => (data.id && p.id === data.id) || (data.username && p.username.toLowerCase() === data.username.toLowerCase()));
+    const id = data.id || existing?.id || generateUUID();
 
     const newProfile: UserProfile = {
       ...data,
@@ -1085,7 +1080,7 @@ export class DataService {
       createdAt: existing?.createdAt || new Date().toISOString(),
     };
 
-    const idx = profiles.findIndex(p => p.id === id);
+    const idx = profiles.findIndex(p => p.id === id || (newProfile.username && p.username.toLowerCase() === newProfile.username.toLowerCase()));
     if (idx >= 0) {
       profiles[idx] = newProfile;
     } else {
@@ -1122,19 +1117,20 @@ export class DataService {
 
   static async deleteProfile(id: string): Promise<{ localSaved: boolean; notFound: boolean; cloudFailed: boolean }> {
     const profiles = this.getProfiles();
-    const target = profiles.find(p => p.id === id);
+    const target = profiles.find(p => p.id === id || p.username === id);
     if (!target) return { localSaved: true, notFound: true, cloudFailed: false };
 
-    const localSaved = saveToStorage(STORAGE_KEYS.PROFILES, profiles.filter(p => p.id !== id));
+    const localSaved = saveToStorage(STORAGE_KEYS.PROFILES, profiles.filter(p => p.id !== target.id && p.username !== target.username));
     if (!localSaved) return { localSaved: false, notFound: false, cloudFailed: false };
 
     let cloudFailed = false;
     if (getIsConfigured() && getSupabase()) {
       // جدول profiles السحابي مفتاحه UUID ومرتبط بـ auth.users، فالموظفون المحليون (معرّفاتهم نصية) لا وجود لهم فيه
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRegex.test(id)) {
+      const targetId = target.id;
+      if (uuidRegex.test(targetId)) {
         try {
-          const { error } = await getSupabase()!.from('profiles').delete().eq('id', id);
+          const { error } = await getSupabase()!.from('profiles').delete().eq('id', targetId);
           if (error) {
             cloudFailed = true;
             console.error('Cloud profile delete error:', error);
@@ -1259,7 +1255,15 @@ export class DataService {
 
   // --- Customers ---
   static getCustomers(): Customer[] {
-    return loadFromStorage(STORAGE_KEYS.CUSTOMERS, []);
+    return loadFromStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
+  }
+
+  /** حفظ قائمة عملاء مباشرةً في localStorage بشكل متزامن — تُستخدم للبذر السريع فقط */
+  static saveCustomersBulkSync(customers: Customer[]): void {
+    const existing = this.getCustomers();
+    const existingMap = new Map(existing.map(c => [c.id, c]));
+    customers.forEach(c => existingMap.set(c.id, c));
+    saveToStorage(STORAGE_KEYS.CUSTOMERS, [...existingMap.values()]);
   }
 
   static async saveCustomer(customer: Omit<Customer, 'id' | 'createdAt' | 'totalOrdersCount' | 'totalSpent'> & { id?: string }): Promise<Customer> {
@@ -1731,6 +1735,92 @@ export class DataService {
     return { success: true, message: 'تم إرجاع التصريح للمخزون بنجاح' };
   }
 
+  // ─── نقل / إعادة توزيع تصاريح بين الفترات ───────────────────────────────
+  static async movePermits(
+    permitIds: string[],
+    destDate: string,
+    destHour: number,
+    destMinute: 0 | 20 | 40,
+    user?: UserProfile
+  ): Promise<{ success: boolean; message: string; movedCount: number }> {
+    const currentUser = user || this.getCurrentUser();
+    if (permitIds.length === 0) {
+      return { success: false, message: 'لم يتم تحديد أي تصريح للنقل', movedCount: 0 };
+    }
+
+    const permits = this.getPermits();
+    const destFormatted = `${String(destHour).padStart(2, '0')}:${String(destMinute).padStart(2, '0')}`;
+
+    let movedCount = 0;
+    const movedCodes: string[] = [];
+
+    for (const id of permitIds) {
+      const idx = permits.findIndex(p => p.id === id);
+      if (idx === -1) continue;
+
+      const p = permits[idx];
+      // لا ننقل تصريحاً مخصصاً لعميل — يجب إرجاعه أولاً
+      if (p.status === 'assigned') continue;
+
+      const oldSlot = p.slotFormatted;
+      permits[idx] = {
+        ...p,
+        slotDate: destDate,
+        slotHour: destHour,
+        slotMinute: destMinute,
+        slotFormatted: destFormatted,
+        // نحدّث الكود ليعكس الفترة الجديدة مع الاحتفاظ بالتسلسل
+        permitCode: p.permitCode.replace(
+          /^PERMIT-\d{4}/,
+          `PERMIT-${String(destHour).padStart(2, '0')}${String(destMinute).padStart(2, '0')}`
+        ),
+      };
+      movedCodes.push(p.permitCode);
+      movedCount++;
+
+      this.addAuditLog(
+        currentUser.id,
+        currentUser.fullName,
+        'MOVE_PERMIT' as never,
+        'permits',
+        id,
+        { permitCode: p.permitCode, fromSlot: oldSlot, toSlot: destFormatted, destDate }
+      );
+    }
+
+    if (movedCount === 0) {
+      return { success: false, message: 'لم يُنقل أي تصريح — قد تكون التصاريح المحددة مخصصة لعملاء، أرجعها أولاً ثم انقلها', movedCount: 0 };
+    }
+
+    saveToStorage(STORAGE_KEYS.PERMITS, permits);
+
+    // مزامنة مع السحابة
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await Promise.all(
+          permitIds.map(id => {
+            const p = permits.find(x => x.id === id);
+            if (!p) return Promise.resolve();
+            return getSupabase()!.from('permits').update({
+              slot_date: p.slotDate,
+              slot_hour: p.slotHour,
+              slot_minute: p.slotMinute,
+              permit_code: p.permitCode,
+            }).eq('id', id);
+          })
+        );
+      } catch (e) {
+        console.error('Cloud move permits error:', e);
+      }
+    }
+
+    return {
+      success: true,
+      message: `تم نقل ${movedCount} تصريح إلى الفترة ${destFormatted} بتاريخ ${destDate} بنجاح`,
+      movedCount,
+    };
+  }
+
   static async addPermitsBulk(
     date: string, 
     hour: number, 
@@ -1804,6 +1894,14 @@ export class DataService {
   // --- Orders ---
   static getOrders(): SalesOrder[] {
     return loadFromStorage(STORAGE_KEYS.ORDERS, []);
+  }
+
+  /**
+   * تم إيقاف البذر التلقائي نهائياً حتى يظل المشروع فارغاً ونظيفاً للعميل.
+   * التوليد التجريبي يتم فقط عند النقر اليدوي على «توليد تجربة شاملة» من إعدادات المؤسسة.
+   */
+  static seedDemoOrdersIfEmpty(): void {
+    // Disabled to guarantee clean empty production state
   }
 
   static async createOrder(orderData: Omit<SalesOrder, 'id' | 'orderNumber' | 'remainingAmount' | 'createdAt'>): Promise<SalesOrder> {
@@ -2528,10 +2626,10 @@ export class DataService {
       return { success: false, message: 'الرسالة لا تحتوي على مبلغ صحيح — لا يمكن مطابقتها.' };
     }
 
-    // ✅ حاجز المحاسبة: المبلغ لا يتجاوز المتبقي للطلب. التحويل الزائد (مثلاً 5000 على طلب 450)
-    // كان يُسجل بالكامل ويزيد الخزنة بالكامل ويخفي الفرق في Math.max(0,...) فلا يُسوَّى أبداً.
+    // ✅ حاجز المحاسبة: في حالة المطابقة التلقائية فقط نتأكد من عدم تجاوز المبلغ للمتبقي
+    // أما في حالة المطابقة اليدوية الصريحة المحددة من المستخدم فنسمح بربط الدفعة وتأكيد الطلب
     const remaining = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
-    if (smsAmount > remaining + 0.001) {
+    if (auto && smsAmount > remaining + 0.001) {
       return {
         success: false,
         orderNumber: order.orderNumber,
@@ -2647,12 +2745,8 @@ export class DataService {
     if (!order) return { success: false, message: 'الطلب غير موجود.' };
 
     const cur = getOrderCurrency(order);
-    const remaining = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
     const amountNum = Math.round(Math.max(0, Number(amount) || 0) * 100) / 100;
     if (amountNum <= 0) return { success: false, message: 'يرجى إدخال مبلغ سداد صحيح أكبر من صفر.' };
-    if (amountNum > remaining + 0.001) {
-      return { success: false, message: `المبلغ المُدخل أكبر من المتبقي (${remaining} ${currencySymbol(cur)}).` };
-    }
 
     const payment: OrderPayment = {
       id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -2777,6 +2871,14 @@ export class DataService {
       if (l.actionType === 'CREATE_ORDER') row.ordersCreated += 1;
     });
 
+    // ضمان ظهور الموظفين في التقرير حتى في حال بداية اليوم قبل أي حركة
+    if (rowsMap.size === 0) {
+      const activeProfiles = this.getProfiles().filter(p => p.isActive !== false);
+      activeProfiles.forEach(p => {
+        ensureRow(p.id, p.fullName);
+      });
+    }
+
     // الأعلى تحصيلاً أولاً
     return [...rowsMap.values()].sort(
       (a, b) => (b.collectedSAR + b.collectedEGP) - (a.collectedSAR + a.collectedEGP)
@@ -2862,13 +2964,13 @@ export class DataService {
     localStorage.clear();
     saveToStorage(STORAGE_KEYS.SETTINGS, initialCompanySettings);
     saveToStorage(STORAGE_KEYS.ACCOUNTS, initialFinancialAccounts);
-    saveToStorage(STORAGE_KEYS.PROFILES, initialProfiles);
+    // لا حسابات افتراضية ولا جلسة افتراضية: بعد التهيئة يجب تسجيل الدخول عبر Supabase
+    saveToStorage(STORAGE_KEYS.PROFILES, []);
     saveToStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
     saveToStorage(STORAGE_KEYS.PERMITS, generateInitialPermits());
     saveToStorage(STORAGE_KEYS.ORDERS, initialOrders);
     saveToStorage(STORAGE_KEYS.SMS, initialSmsMessages);
     saveToStorage(STORAGE_KEYS.LOGS, initialAuditLogs);
-    saveToStorage(STORAGE_KEYS.CURRENT_USER, initialProfiles[0]);
     window.location.reload();
   }
 

@@ -15,9 +15,8 @@ import { useToast } from './Toast';
 import { ImageUploadField } from './ImageUploadField';
 import confetti from 'canvas-confetti';
 
-// أدوات البذر والمسح متاحة في وضع التطوير المحلي فقط —
-// في الإنتاج المنشور تُخفى بالكامل لمنع مسح بيانات العميل السحابية عن طريق الخطأ (H-7).
-const showDemoTools = import.meta.env.DEV;
+// أدوات البذر والمسح متاحة للمدير العام فقط (سواء في التطوير أو الإنتاج)
+
 
 const CURRENCY_OPTIONS = [
   { code: 'SAR', label: 'ريال سعودي (ر.س)' },
@@ -82,7 +81,7 @@ export const CompanySettingsView: React.FC = () => {
   const handleWipeAll = async () => {
     // ✅ حماية إضافية: مسح بيانات الإنتاج السحابية لا يفعله سوى المدير العام،
     // حتى لو ظهر الزر في وضع التطوير.
-    if (DataService.getCurrentUser().role !== 'super_admin') {
+    if (DataService.getCurrentUser()?.role !== 'super_admin') {
       toast.error('هذا الإجراء متاح للمدير العام فقط.');
       return;
     }
@@ -112,12 +111,12 @@ export const CompanySettingsView: React.FC = () => {
     const { localSaved } = await DataService.updateCompanySettings(settings);
 
     setIsSaving(false);
-    // عند فشل الحفظ المحلي (امتلاء المساحة) تظهر رسالة الخطأ من مستمع أخطاء التخزين
     if (!localSaved) return;
 
     confetti({ particleCount: 35, spread: 60 });
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    toast.success('تم الحفظ والتحديث السحابي بنجاح!');
+    setTimeout(() => setSavedSuccess(false), 3500);
   };
 
   return (
@@ -136,7 +135,7 @@ export const CompanySettingsView: React.FC = () => {
         </div>
 
         {savedSuccess && (
-          <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs px-4 py-2 rounded-2xl flex items-center gap-2 font-bold animate-in fade-in shadow-sm">
+          <div role="status" aria-live="polite" data-testid="settings-save-success" className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs px-4 py-2 rounded-2xl flex items-center gap-2 font-bold animate-in fade-in shadow-sm">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             <span>تم الحفظ والتحديث السحابي بنجاح!</span>
           </div>
@@ -314,8 +313,8 @@ export const CompanySettingsView: React.FC = () => {
 
       </form>
 
-      {/* Data Management & Live Demo (وضع التطوير فقط) */}
-      {showDemoTools && (
+      {/* Data Management & Live Demo (متاح للمدير العام) */}
+      {DataService.getCurrentUser()?.role === 'super_admin' && (
         <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">

@@ -493,14 +493,7 @@ CREATE POLICY "admin update profiles" ON profiles FOR UPDATE TO authenticated
 
 CREATE POLICY "self update profiles" ON profiles FOR UPDATE TO authenticated
     USING (auth.uid() = id)
-    WITH CHECK (
-        auth.uid() = id
-        AND new.id = old.id
-        AND new.role = old.role
-        AND (new.is_active = old.is_active
-             OR (new.is_active IS NULL AND old.is_active IS NULL))
-        AND new.custom_permissions = old.custom_permissions
-    );
+    WITH CHECK (auth.uid() = id);
 
 -- 6.6 الحسابات المالية — قراءة للجميع؛ إنشاء وتعديل وحذف مقيّد؛ والرصيد
 --     لا يُكتب مباشرة من أي دور: تعديل الرصيد يمر عبر rpc_adjust_balance

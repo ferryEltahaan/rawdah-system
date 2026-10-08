@@ -192,13 +192,16 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {children}
 
       {/* Toasts Stack */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] flex flex-col gap-2 w-[min(92vw,430px)] pointer-events-none">
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[min(92vw,430px)] pointer-events-none">
         {toasts.map(t => {
           const style = TOAST_STYLES[t.type];
           return (
             <div
               key={t.id}
-              role="alert"
+              role={t.type === 'success' ? 'status' : 'alert'}
+              aria-live="polite"
+              data-testid="toast-notification"
+              data-toast-type={t.type}
               className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl border shadow-lg backdrop-blur-sm ${style.container} ${
                 t.leaving ? 'toast-leave' : 'toast-enter'
               }`}
