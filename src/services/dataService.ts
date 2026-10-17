@@ -2108,12 +2108,16 @@ export class DataService {
       let blob: Blob;
       let ext = 'jpg';
 
-      if (imageData.startsWith('data:')) {
+      if (imageData.startsWith('data:image/svg+xml')) {
+        ext = 'svg';
+        const res = await fetch(imageData);
+        blob = await res.blob();
+      } else if (imageData.startsWith('data:')) {
         try {
           const parts = imageData.split(',');
           const mimeMatch = parts[0].match(/:(.*?);/);
           const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-          ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+          ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('svg') ? 'svg' : 'jpg';
           const byteString = atob(parts[1]);
           const ab = new ArrayBuffer(byteString.length);
           const ia = new Uint8Array(ab);
@@ -2124,20 +2128,21 @@ export class DataService {
         } catch {
           const res = await fetch(imageData);
           blob = await res.blob();
-          ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+          ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : blob.type.includes('svg') ? 'svg' : 'jpg';
         }
       } else {
         const res = await fetch(imageData);
         blob = await res.blob();
-        ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+        ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : blob.type.includes('svg') ? 'svg' : 'jpg';
       }
 
       // اسم الملف مباشرة داخل الـ bucket دون مجلد فرعي مكرر
       const fileName = `${generateUUID()}.${ext}`;
+      const contentType = blob.type || (ext === 'svg' ? 'image/svg+xml' : 'image/jpeg');
 
       const { error: uploadErr } = await sb.storage
         .from('permits')
-        .upload(fileName, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
+        .upload(fileName, blob, { contentType, upsert: false });
 
       if (uploadErr) {
         console.warn('[Storage] Permit image upload failed, falling back to local base64:', uploadErr.message);
