@@ -2108,19 +2108,20 @@ export class DataService {
       // تحويل data URL إلى Blob
       const res = await fetch(imageData);
       const blob = await res.blob();
-      const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-      const fileName = `permits/${generateUUID()}.${ext}`;
+      // اسم الملف مباشرة داخل الـ bucket دون مجلد فرعي مكرر
+      const fileName = `${generateUUID()}.${ext}`;
 
       const { error: uploadErr } = await sb.storage
         .from('permits')
         .upload(fileName, blob, { contentType: blob.type, upsert: false });
 
       if (uploadErr) {
-        console.error('[Storage] Permit image upload error:', uploadErr.message);
+        console.warn('[Storage] Permit image upload failed, falling back to local base64:', uploadErr.message);
         return imageData; // Fallback: Base64
       }
 
       const { data: urlData } = sb.storage.from('permits').getPublicUrl(fileName);
+      console.log('[Storage] Successfully uploaded permit image to Supabase:', urlData?.publicUrl);
       return urlData?.publicUrl || imageData;
     } catch (e) {
       console.error('[Storage] uploadPermitImage exception:', e);
