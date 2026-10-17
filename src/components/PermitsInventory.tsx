@@ -124,7 +124,7 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
         continue;
       }
       try {
-        const url = await compressImageFile(file, 1200);
+        const url = await compressImageFile(file, 800);
         processed.push({ name: file.name, url });
         totalBytes += url.length;
       } catch {
@@ -217,6 +217,29 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
     }
   };
 
+  const handleDeletePermit = async (permit: Permit) => {
+    const ok = await toast.confirm(
+      `هل أنت متأكد من حذف التصريح (${permit.permitCode}) نهائياً من المخزون؟\nسيتم حذف الصورة وتفريغ مساحة التخزين فوراً.`,
+      { title: 'حذف تصريح نهائياً', confirmLabel: 'نعم، احذف التصريح', danger: true }
+    );
+    if (!ok) return;
+
+    const result = await DataService.deletePermit(permit.id, currentUser);
+    if (result.success) {
+      toast.success(result.message);
+      refreshData();
+      if (previewPermit?.id === permit.id) setPreviewPermit(null);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const handleCleanupStorage = async () => {
+    const res = await DataService.cleanupAndFreeStorage();
+    refreshData();
+    toast.success(`تم تفريغ مساحة التخزين بنجاح (تم توفير ${res.freedKb} كيلوبايت) وتحديث الذاكرة.`);
+  };
+
   const handleReturn = async () => {
     if (!returningPermit) return;
     const result = await DataService.returnPermit(returningPermit.id, returnReason, currentUser);
@@ -267,10 +290,34 @@ ${companyName}`;
     const urlsFromText = uploadUrls.split('\n').map(u => u.trim()).filter(u => u.length > 0);
     const urlsFromFiles = selectedFiles.map(f => f.url);
     
-    const finalUrls = [...urlsFromFiles, ...urlsFromText];
-    if (finalUrls.length === 0) {
+    const rawUrls = [...urlsFromFiles, ...urlsFromText];
+    if (rawUrls.length === 0) {
       toast.error('أضف صورة واحدة على الأقل من جهازك أو رابط صورة خارجي قبل الحفظ — لا يمكن رفع تصاريح فارغة إلى المخزون.');
       return;
+    }
+
+    // رفع صور الأجهزة (Base64) إلى Supabase Storage إن كان مُعدّاً
+    // الروابط الخارجية (https) تُمرَّر مباشرةً دون إعادة رفع
+    const hasLocalImages = rawUrls.some(u => u.startsWith('data:'));
+    if (hasLocalImages) {
+      toast.info('جاري رفع الصور إلى التخزين السحابي...');
+    }
+
+    const finalUrls: string[] = await Promise.all(
+      rawUrls.map(url => DataService.uploadPermitImage(url))
+    );
+
+    // إشعار المستخدم بنتيجة الرفع
+    if (hasLocalImages) {
+      const cloudCount = finalUrls.filter(u => u.startsWith('https')).length;
+      const localCount = finalUrls.length - cloudCount;
+      if (cloudCount > 0 && localCount === 0) {
+        toast.success(`✅ تم رفع ${cloudCount} صورة إلى التخزين السحابي بنجاح`);
+      } else if (cloudCount > 0 && localCount > 0) {
+        toast.warning(`⚠️ تم رفع ${cloudCount} سحابياً، ${localCount} محفوظة محلياً (تحقق من إعداد Bucket)`);
+      } else {
+        toast.info('تم الحفظ محلياً — لم يتم الرفع السحابي (Bucket غير مُعدّ)');
+      }
     }
 
     await DataService.addPermitsBulk(selectedDate, uploadHour, uploadMinute, finalUrls, uploadNotes);
@@ -298,6 +345,8 @@ ${companyName}`;
   const canClaim = ['super_admin', 'sales'].includes(currentUser.role) && (currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.edit));
   // Can move / reallocate permits (Super Admin, Inventory, Sales - all roles with inventory access)
   const canMove = true;
+  // Can delete permits (Admin, staff, or mistaken entries to free device storage)
+  const canDelete = currentUser.role === 'super_admin' || Boolean(currentUser.customPermissions?.delete) || ['inventory', 'sales'].includes(currentUser.role);
 
   return (
     <div className="space-y-6">
@@ -326,6 +375,16 @@ ${companyName}`;
               className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
             />
           </div>
+
+          {/* Cleanup Storage Button */}
+          <button
+            onClick={handleCleanupStorage}
+            className="flex items-center gap-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold px-3.5 py-2.5 rounded-2xl text-xs transition-all shadow-sm"
+            title="تفريغ سجلات الفحص والبيانات المؤقتة القديمة لتحرير مساحة الهاتف فوراً"
+          >
+            <HardDrive className="w-4 h-4 text-amber-600" />
+            <span>تفريغ وضغط الذاكرة</span>
+          </button>
 
           {/* Bulk Upload Button (if allowed) */}
           {canUpload && (
@@ -471,6 +530,32 @@ ${companyName}`;
                 <span>إعادة توزيع الفترة</span>
               </button>
             )}
+
+            {canDelete && currentSlotPermits.filter(p => p.status === 'available').length > 0 && (
+              <button
+                id="bulk-delete-slot-btn"
+                onClick={async () => {
+                  const available = currentSlotPermits.filter(p => p.status === 'available');
+                  const ok = await toast.confirm(
+                    `هل تريد حذف جميع التصاريح المتاحة في هذه الفترة (${available.length} تصريح) نهائياً لتفريغ مساحة التخزين؟`,
+                    { title: 'حذف تصاريح الفترة المتاحة', confirmLabel: 'نعم، احذف المتاح', danger: true }
+                  );
+                  if (!ok) return;
+                  const res = await DataService.deletePermitsBulk(available.map(p => p.id), currentUser);
+                  if (res.success) {
+                    toast.success(res.message);
+                    refreshData();
+                  } else {
+                    toast.error(res.message);
+                  }
+                }}
+                className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-3 py-1 rounded-xl text-xs shadow-sm transition-all"
+                title="حذف جميع التصاريح المتاحة في هذه الفترة في حالة الخطأ لتفريغ المساحة فوراً"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>حذف المتاح ({currentSlotPermits.filter(p => p.status === 'available').length})</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-3 text-xs text-slate-500">
@@ -586,17 +671,30 @@ ${companyName}`;
                         ) : (
                           <div className="text-center text-[11px] text-slate-400 py-1 font-medium">متاح لفريق المبيعات</div>
                         )}
-                        {canMove && (
-                          <button
-                            id={`move-permit-btn-${permit.id}`}
-                            onClick={() => openMoveModal([permit.id])}
-                            className="w-full py-2 px-3 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                            title="نقل هذا التصريح إلى فترة زمنية مختلفة"
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                            <span>نقل</span>
-                          </button>
-                        )}
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {canMove && (
+                            <button
+                              id={`move-permit-btn-${permit.id}`}
+                              onClick={() => openMoveModal([permit.id])}
+                              className="py-2 px-2 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 font-bold text-[11px] flex items-center justify-center gap-1 transition-all shadow-sm"
+                              title="نقل هذا التصريح إلى فترة زمنية مختلفة"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                              <span>نقل</span>
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              id={`delete-permit-btn-${permit.id}`}
+                              onClick={() => handleDeletePermit(permit)}
+                              className="py-2 px-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-all shadow-sm"
+                              title="حذف هذا التصريح نهائياً لتفريغ المساحة في حالة الدخول الخاطئ"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>حذف</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-3 gap-1.5">
@@ -1077,6 +1175,18 @@ ${companyName}`;
                   >
                     <ArrowRightLeft className="w-3.5 h-3.5" />
                     <span>نقل / إعادة توزيع</span>
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    id="modal-delete-permit-btn"
+                    onClick={() => handleDeletePermit(previewPermit)}
+                    className="px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold flex items-center gap-1 shadow-sm"
+                    title="حذف هذا التصريح نهائياً من المخزون وتفريغ مساحته فوراً"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>حذف التصريح</span>
                   </button>
                 )}
                 <button

@@ -83,6 +83,9 @@ const AppContent: React.FC = () => {
   };
 
   useEffect(() => {
+    // معالجة ذاتية فورية لمساحة التخزين وتفريغ أي مخلفات قديمة
+    DataService.selfHealStorage();
+
     // Initial Cloud Sync — يُزامن البيانات من Supabase عند بدء التشغيل
     DataService.syncFromCloud().then(() => {
       updateCounts();

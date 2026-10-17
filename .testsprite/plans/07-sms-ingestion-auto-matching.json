@@ -1,0 +1,11 @@
+{
+  "type": "frontend",
+  "name": "07 - SMS Payment Ingestion and Matching",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to 'رسائل الـ SMS والسداد'" },
+    { "type": "assertion", "description": "SMS inbox view is rendered" },
+    { "type": "action", "description": "Simulate incoming SMS payment for order" },
+    { "type": "action", "description": "Execute matching" },
+    { "type": "assertion", "description": "SMS status changes to matched and order balance is updated" }
+  ]
+}

@@ -22,8 +22,8 @@ interface CloudSetupModalProps {
 // القديم يُفك محلياً فقط ولا يُرسل لأي جهة
 function classifySupabaseKey(key: string): 'ok' | 'secret' | 'invalid' {
   const trimmed = key.trim();
-  if (trimmed.startsWith('sb_publishable_')) return 'ok';
-  if (trimmed.startsWith('sb_secret_')) return 'secret';
+  if (trimmed.startsWith('sb_publishable_') || trimmed.startsWith('sbp_')) return 'ok';
+  if (trimmed.startsWith('sb_secret_') || trimmed.startsWith('sbs_')) return 'secret';
   const parts = trimmed.split('.');
   if (parts.length !== 3) return 'invalid';
   try {

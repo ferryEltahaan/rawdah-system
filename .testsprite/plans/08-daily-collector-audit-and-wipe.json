@@ -1,0 +1,11 @@
+{
+  "type": "frontend",
+  "name": "08 - Daily Collector Audit and Clean Wipe",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to Dashboard and verify Daily Collector Audit report" },
+    { "type": "assertion", "description": "Staff collection breakdown is accurate" },
+    { "type": "action", "description": "Navigate to 'إعدادات وبيانات المؤسسة'" },
+    { "type": "action", "description": "Click 'مسح البيانات نهائياً' and confirm" },
+    { "type": "assertion", "description": "All lists are zeroed and database remains completely clean" }
+  ]
+}

@@ -21,7 +21,7 @@ export async function compressImageFile(file: File, maxDimension: number): Promi
 
   const largestSide = Math.max(image.width, image.height);
   const scale = largestSide > maxDimension ? maxDimension / largestSide : 1;
-  if (scale === 1 && dataUrl.length < 150_000) return dataUrl;
+  if (scale === 1 && dataUrl.length < 100_000) return dataUrl;
 
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(image.width * scale));
@@ -48,12 +48,12 @@ export async function compressImageFile(file: File, maxDimension: number): Promi
       flatCtx.fillStyle = '#ffffff';
       flatCtx.fillRect(0, 0, flat.width, flat.height);
       flatCtx.drawImage(canvas, 0, 0);
-      const jpeg = flat.toDataURL('image/jpeg', 0.85);
+      const jpeg = flat.toDataURL('image/jpeg', 0.78);
       // نفضّل PNG للشعارات ذات الخلفية الشفافة، وJPEG فقط عند توفير كبير في الحجم
       if (jpeg.length <= png.length * 0.7) candidates.push(jpeg);
     }
   } else {
-    candidates.push(canvas.toDataURL('image/jpeg', 0.85));
+    candidates.push(canvas.toDataURL('image/jpeg', 0.78));
   }
 
   return candidates.reduce((smallest, candidate) => (candidate.length < smallest.length ? candidate : smallest), dataUrl);

@@ -1,0 +1,13 @@
+{
+  "type": "frontend",
+  "name": "06 - Permits Inventory and Order Claim",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to 'مخزون الفترات (24 ساعة)'" },
+    { "type": "assertion", "description": "24-hour timeline bar is rendered" },
+    { "type": "action", "description": "Select slot 08:20 and add permits" },
+    { "type": "assertion", "description": "Available permits counter updates" },
+    { "type": "action", "description": "Navigate to 'طلبات البيع والحجوزات' and create new order for 08:20" },
+    { "type": "action", "description": "Claim available permit for the order" },
+    { "type": "assertion", "description": "Order status updates to confirmed and permit is marked as assigned" }
+  ]
+}

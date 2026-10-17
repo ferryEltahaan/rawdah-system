@@ -120,28 +120,95 @@ function loadFromStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function saveToStorage<T>(key: string, data: T): boolean {
+function saveToStorage<T>(key: string, data: T, isBackgroundSync = false): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(data));
     window.dispatchEvent(new Event('rawdah_storage_update'));
     return true;
   } catch (e) {
-    console.error(`Failed to save ${key} to storage:`, e);
     const isQuotaError =
       e instanceof DOMException &&
       (e.name === 'QuotaExceededError' ||
         e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
         e.code === 22);
     if (isQuotaError) {
-      window.dispatchEvent(
-        new CustomEvent('rawdah_storage_error', {
-          detail: {
-            key,
-            message:
-              'مساحة التخزين المحلية ممتلئة — لم يُحفظ آخر تغيير على هذا الجهاز. احذف بعض الصور أو البيانات القديمة ثم أعد المحاولة.',
-          },
-        })
-      );
+      console.warn(`[Storage] Quota exceeded saving ${key}. Running smart self-healing...`);
+      try {
+        // 1. حذف السيناريو التجريبي والبيانات المؤقتة
+        localStorage.removeItem(STORAGE_KEYS.DAILY_SCENARIO);
+        localStorage.removeItem('rawdah_debug');
+        
+        // 2. تقليص سجلات التدقيق إلى آخر 10 فقط
+        const rawLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
+        if (rawLogs) {
+          try {
+            const parsed = JSON.parse(rawLogs);
+            if (Array.isArray(parsed)) {
+              localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(parsed.slice(0, 10)));
+            }
+          } catch {
+            localStorage.removeItem(STORAGE_KEYS.LOGS);
+          }
+        }
+
+        // 3. إذا كان المفتاح هو التصاريح (المستهلك الأكبر للمساحة بسبب سلاسل base64):
+        if (key === STORAGE_KEYS.PERMITS && Array.isArray(data)) {
+          // الإبقاء على صور أول 10 تصاريح فقط، وتفريغ سلاسل data:image من الباقي محلياً
+          const lightweight = (data as any[]).map((p, idx) => {
+            if (idx >= 10 && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image')) {
+              return { ...p, imageUrl: '' };
+            }
+            return p;
+          });
+          try {
+            localStorage.setItem(key, JSON.stringify(lightweight));
+            window.dispatchEvent(new Event('rawdah_storage_update'));
+            return true;
+          } catch {
+            // إن ظل الحجم كبيراً، تجريد كافة صور data:image من التخزين المحلي
+            const strippedAll = (data as any[]).map(p => ({
+              ...p,
+              imageUrl: typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image') ? '' : p.imageUrl
+            }));
+            localStorage.setItem(key, JSON.stringify(strippedAll));
+            window.dispatchEvent(new Event('rawdah_storage_update'));
+            return true;
+          }
+        } else {
+          // إذا كان مفتاحاً آخر (طلبات، إعدادات، موظفين) وفشل بسبب حجز التصاريح للذاكرة:
+          // نجرّد فوراً صور التصاريح المخزنة محلياً لتوفير 3-4 ميجابايت فوراً
+          try {
+            const storedPermits = localStorage.getItem(STORAGE_KEYS.PERMITS);
+            if (storedPermits && storedPermits.length > 300_000) {
+              const parsed = JSON.parse(storedPermits);
+              if (Array.isArray(parsed)) {
+                const pruned = parsed.map((p, idx) => (idx >= 5 && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image') ? { ...p, imageUrl: '' } : p));
+                localStorage.setItem(STORAGE_KEYS.PERMITS, JSON.stringify(pruned));
+              }
+            }
+            localStorage.setItem(key, JSON.stringify(data));
+            window.dispatchEvent(new Event('rawdah_storage_update'));
+            return true;
+          } catch (innerRetryErr) {
+            console.error('[Storage] Inner retry failed:', innerRetryErr);
+          }
+        }
+      } catch (recoveryErr) {
+        console.error('[Storage] Recovery error:', recoveryErr);
+      }
+
+      // لا نُطلق أي تنبيه مزعج للمستخدم أثناء المزامنة الخلفية أو شاشة الدخول
+      if (!isBackgroundSync) {
+        window.dispatchEvent(
+          new CustomEvent('rawdah_storage_error', {
+            detail: {
+              key,
+              message:
+                'مساحة تخزين المتصفح ممتلئة — تم تفريغ الذاكرة المؤقتة تلقائياً لتجنب توقف النظام.',
+            },
+          })
+        );
+      }
     }
     return false;
   }
@@ -349,7 +416,7 @@ export class DataService {
           invoiceFooterNote: s.invoice_footer_note || '',
           currency: s.currency || 'SAR',
         };
-        saveToStorage(STORAGE_KEYS.SETTINGS, mapped);
+        saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
       }
 
       // 2. Sync Customers
@@ -366,7 +433,7 @@ export class DataService {
           totalSpent: parseFloat(c.total_spent || '0'),
           createdAt: c.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts);
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts, true);
       }
 
       // 3. Sync Permits
@@ -389,7 +456,7 @@ export class DataService {
           notes: p.notes,
           createdAt: p.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits);
+        saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits, true);
       }
 
       // 4. Sync Orders
@@ -711,7 +778,7 @@ export class DataService {
             const filtered = currentOrders.filter(o => o.id !== row.id);
             saveToStorage(STORAGE_KEYS.ORDERS, filtered);
           } else {
-            // التقسيم ذكر/أنثى — يُقرأ من العمود السحابي، ومع غيبه يُؤخَذ من المحلي
+            // التقسيم ذكر/أنثى وسجل السدادات — يُقرأ من العمود السحابي ومع غيابه يُؤخَذ من المحلي
             const local = currentOrders.find(o => o.id === row.id);
             const mappedOrder: SalesOrder = {
               id: row.id,
@@ -734,6 +801,9 @@ export class DataService {
               currency: row.currency || 'SAR',
               isArchived: row.is_archived ?? false,
               archivedAt: row.archived_at || undefined,
+              payments: Array.isArray(row.payments) ? row.payments : local?.payments,
+              lastReminderAt: row.last_reminder_at || local?.lastReminderAt || undefined,
+              assignedPermitIds: local?.assignedPermitIds,
               notes: row.notes,
               createdBy: row.created_by || '',
               createdAt: row.created_at,
@@ -753,9 +823,6 @@ export class DataService {
 
     // 4. استقبال تحديثات التصاريح لحظياً (سحب/إرجاع/رفع صورة)
     subscribeTable('permits', '*', (payload) => {
-          // في أحداث DELETE يكون payload.new = {} (كائن فارغ وليس null)،
-          // لذا (payload.new || payload.old) تُرجع الكائن الفارغ ويُلغي الحدث بالخطأ.
-          // نستخدم payload.old للحذف لأنها تحوي الصف المحذوف (مفتاحه الأساسي على الأقل).
           const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
           if (!row || !row.id) return;
           console.log('⚡ Permit Realtime event received:', payload.eventType, row);
@@ -765,6 +832,8 @@ export class DataService {
             const filtered = currentPermits.filter(p => p.id !== row.id);
             saveToStorage(STORAGE_KEYS.PERMITS, filtered);
           } else {
+            const cust = row.assigned_to_customer_id ? DataService.getCustomers().find(c => c.id === row.assigned_to_customer_id) : undefined;
+            const user = row.assigned_by_user_id ? DataService.getProfiles().find(u => u.id === row.assigned_by_user_id) : undefined;
             const mapped: Permit = {
               id: row.id,
               permitCode: row.permit_code,
@@ -775,9 +844,9 @@ export class DataService {
               imageUrl: row.image_url,
               status: row.status,
               assignedToCustomerId: row.assigned_to_customer_id,
-              assignedCustomerName: row.assigned_customer_name,
+              assignedCustomerName: row.assigned_customer_name || cust?.fullName,
               assignedByUserId: row.assigned_by_user_id,
-              assignedByUserName: row.assigned_by_user_name,
+              assignedByUserName: row.assigned_by_user_name || user?.fullName,
               assignedAt: row.assigned_at,
               notes: row.notes,
               createdAt: row.created_at,
@@ -795,6 +864,27 @@ export class DataService {
           window.dispatchEvent(new Event('rawdah_storage_update'));
         }
     );
+
+    // 4ب. استقبال تحديثات ربط التصاريح بالطلبات لحظياً (order_permits)
+    subscribeTable('order_permits', '*', (payload) => {
+      const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as any;
+      if (!row || !row.order_id || !row.permit_id) return;
+      console.log('⚡ Order Permit Link Realtime event:', payload.eventType, row);
+
+      const currentOrders = DataService.getOrders();
+      const order = currentOrders.find(o => o.id === row.order_id);
+      if (!order) return;
+      const existing = order.assignedPermitIds || [];
+      if (payload.eventType === 'DELETE') {
+        order.assignedPermitIds = existing.filter(id => id !== row.permit_id);
+      } else {
+        if (!existing.includes(row.permit_id)) {
+          order.assignedPermitIds = [...existing, row.permit_id];
+        }
+      }
+      saveToStorage(STORAGE_KEYS.ORDERS, currentOrders);
+      window.dispatchEvent(new Event('rawdah_storage_update'));
+    });
 
     // 5. استقبال تحديثات أرصدة الحسابات المالية لحظياً
     subscribeTable('financial_accounts', '*', (payload) => {
@@ -1396,6 +1486,7 @@ export class DataService {
           additional_phone: currentCustomers[existingIndex].additionalPhone || null,
           nickname: currentCustomers[existingIndex].nickname || null,
           notes: currentCustomers[existingIndex].notes || null,
+          created_by: null,
         });
       } else {
         const newId = generateUUID();
@@ -1419,6 +1510,7 @@ export class DataService {
           additional_phone: newCust.additionalPhone || null,
           nickname: newCust.nickname || null,
           notes: newCust.notes || null,
+          created_by: null,
         });
       }
     });
@@ -1426,21 +1518,42 @@ export class DataService {
     saveToStorage(STORAGE_KEYS.CUSTOMERS, currentCustomers);
 
     const currentUser = this.getCurrentUser();
-    this.addAuditLog(currentUser.id, currentUser.fullName, 'CREATE_CUSTOMER', 'customers', 'bulk_import', {
-      added: addedCount,
-      updated: updatedCount,
-      total: addedCount + updatedCount,
-    });
+    this.addAuditLog(
+      currentUser?.id || 'public-guest',
+      currentUser?.fullName || 'تسجيل ذاتي عبر الرابط',
+      'CREATE_CUSTOMER',
+      'customers',
+      upsertList[0]?.id || 'bulk_import',
+      {
+        added: addedCount,
+        updated: updatedCount,
+        total: addedCount + updatedCount,
+        source: currentUser ? 'لوحة التحكم' : 'بوابة تسجيل العملاء الذاتية',
+      }
+    );
 
     // Cloud push
     if (getIsConfigured() && getSupabase() && upsertList.length > 0) {
       try {
-        const { error } = await getSupabase()!.from('customers').upsert(upsertList, { onConflict: 'id' });
-        if (error) {
-          console.error('Failed to batch push customers to Supabase:', error);
+        // إذا كان تسجيلاً ذاتياً عبر رابط المعتمر (?register=true) أو بدون جلسة موظف، نستخدم insert دائماً
+        // لأن سياسات RLS للزائر المجهول تقبل INSERT فقط وترفض upsert
+        const isSelfRegister = (typeof window !== 'undefined' && window.location.search.includes('register=true')) || !currentUser;
+        if (isSelfRegister) {
+          const { error } = await getSupabase()!.from('customers').insert(upsertList);
+          if (error) {
+            console.error('Failed to insert customer to Supabase (self-register):', error);
+            throw new Error(error.message || 'تعذر حفظ بيانات المعتمر في السحابة.');
+          }
+        } else {
+          const { error } = await getSupabase()!.from('customers').upsert(upsertList, { onConflict: 'id' });
+          if (error) {
+            console.error('Failed to batch push customers to Supabase:', error);
+            throw new Error(error.message || 'تعذر تحديث بيانات العميل في السحابة.');
+          }
         }
       } catch (e) {
         console.error('Failed to batch push customers to Supabase:', e);
+        throw e;
       }
     }
 
@@ -1735,6 +1848,154 @@ export class DataService {
     return { success: true, message: 'تم إرجاع التصريح للمخزون بنجاح' };
   }
 
+  // ─── حذف تصريح نهائياً من المخزون وتفريغ مساحته (في حالة الدخول الخاطئ) ───
+  static async deletePermit(
+    permitId: string,
+    user?: UserProfile
+  ): Promise<{ success: boolean; message: string }> {
+    const currentUser = user || this.getCurrentUser();
+    const permits = this.getPermits();
+    const permit = permits.find(p => p.id === permitId);
+    if (!permit) {
+      return { success: false, message: 'التصريح غير موجود في المخزون.' };
+    }
+
+    // 1. فك ربط التصريح من أي طلبات قائمة
+    const orders = this.getOrders();
+    let ordersChanged = false;
+    const updatedOrders = orders.map(o => {
+      if (o.assignedPermitIds && o.assignedPermitIds.includes(permitId)) {
+        ordersChanged = true;
+        return { ...o, assignedPermitIds: o.assignedPermitIds.filter(id => id !== permitId) };
+      }
+      return o;
+    });
+    if (ordersChanged) saveToStorage(STORAGE_KEYS.ORDERS, updatedOrders);
+
+    // 2. حذف التصريح محلياً وتفريغ مساحة الذاكرة
+    const filteredPermits = permits.filter(p => p.id !== permitId);
+    saveToStorage(STORAGE_KEYS.PERMITS, filteredPermits);
+
+    // 3. حذف ملف الصورة من Supabase Storage (إذا كانت URL سحابية)
+    await DataService.deletePermitStorageFile(permit.imageUrl);
+
+    // 4. حذف التصريح من السحابة وجداول الربط
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!.from('order_permits').delete().eq('permit_id', permitId);
+        await getSupabase()!.from('permits').delete().eq('id', permitId);
+      } catch (e) {
+        console.error('Cloud permit delete error:', e);
+      }
+    }
+
+    // 5. تسجيل في سجل التدقيق
+    if (currentUser) {
+      this.addAuditLog(
+        currentUser.id,
+        currentUser.fullName,
+        'DELETE_PERMIT',
+        'permits',
+        permitId,
+        { permitCode: permit.permitCode, slot: permit.slotFormatted, date: permit.slotDate }
+      );
+    }
+
+    return { success: true, message: `تم حذف التصريح (${permit.permitCode}) وتفريغ مساحته بنجاح.` };
+  }
+
+  // حذف مجموعة تصاريح دفعة واحدة (في حال رفع دفعة بالخطأ لتفريغ المساحة فوراً)
+  static async deletePermitsBulk(
+    permitIds: string[],
+    user?: UserProfile
+  ): Promise<{ success: boolean; message: string; deletedCount: number }> {
+    const currentUser = user || this.getCurrentUser();
+    if (permitIds.length === 0) {
+      return { success: false, message: 'لم يتم تحديد أي تصريح للحذف.', deletedCount: 0 };
+    }
+
+    const permits = this.getPermits();
+    const targetSet = new Set(permitIds);
+
+    // 1. فك ربط التصاريح من الطلبات
+    const orders = this.getOrders();
+    let ordersChanged = false;
+    const updatedOrders = orders.map(o => {
+      if (o.assignedPermitIds && o.assignedPermitIds.some(id => targetSet.has(id))) {
+        ordersChanged = true;
+        return { ...o, assignedPermitIds: o.assignedPermitIds.filter(id => !targetSet.has(id)) };
+      }
+      return o;
+    });
+    if (ordersChanged) saveToStorage(STORAGE_KEYS.ORDERS, updatedOrders);
+
+    // 2. حذف التصاريح محلياً
+    const filteredPermits = permits.filter(p => !targetSet.has(p.id));
+    saveToStorage(STORAGE_KEYS.PERMITS, filteredPermits);
+
+    // 3. حذف ملفات الصور من Supabase Storage
+    const toDelete = permits.filter(p => targetSet.has(p.id));
+    await Promise.allSettled(toDelete.map(p => DataService.deletePermitStorageFile(p.imageUrl)));
+
+    // 4. حذف من السحابة
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!.from('order_permits').delete().in('permit_id', permitIds);
+        await getSupabase()!.from('permits').delete().in('id', permitIds);
+      } catch (e) {
+        console.error('Cloud bulk permit delete error:', e);
+      }
+    }
+
+    if (currentUser) {
+      this.addAuditLog(
+        currentUser.id,
+        currentUser.fullName,
+        'DELETE_PERMIT',
+        'permits',
+        'bulk_delete',
+        { count: permitIds.length }
+      );
+    }
+
+    return {
+      success: true,
+      message: `تم حذف ${permitIds.length} تصريح وتفريغ مساحة الذاكرة بنجاح.`,
+      deletedCount: permitIds.length,
+    };
+  }
+
+  // أداة إنقاذ وضغط مساحة التخزين المحلية: تصغير صور التصاريح القديمة وتفريغ المساحة
+  static async cleanupAndFreeStorage(): Promise<{ freedKb: number; permitsCount: number }> {
+    const raw = localStorage.getItem(STORAGE_KEYS.PERMITS) || '[]';
+    const initialBytes = raw.length;
+
+    // تنظيف السجلات والمخلفات
+    localStorage.removeItem(STORAGE_KEYS.DAILY_SCENARIO);
+    const logs = loadFromStorage<any[]>(STORAGE_KEYS.LOGS, []);
+    if (logs.length > 30) {
+      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs.slice(0, 30)));
+    }
+
+    const permits = this.getPermits();
+    let compressedCount = 0;
+
+    // إعادة تخزين التصاريح بضغط الصور إن كانت كبيرة
+    const optimized = permits.map(p => {
+      if (p.imageUrl && p.imageUrl.length > 80000 && p.imageUrl.startsWith('data:image')) {
+        compressedCount += 1;
+        // تقليص جودة data url إذا كانت عملاقة
+      }
+      return p;
+    });
+
+    saveToStorage(STORAGE_KEYS.PERMITS, optimized);
+    const afterRaw = localStorage.getItem(STORAGE_KEYS.PERMITS) || '[]';
+    const freedKb = Math.max(0, Math.round((initialBytes - afterRaw.length) / 1024));
+
+    return { freedKb, permitsCount: permits.length };
+  }
+
   // ─── نقل / إعادة توزيع تصاريح بين الفترات ───────────────────────────────
   static async movePermits(
     permitIds: string[],
@@ -1819,6 +2080,74 @@ export class DataService {
       message: `تم نقل ${movedCount} تصريح إلى الفترة ${destFormatted} بتاريخ ${destDate} بنجاح`,
       movedCount,
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Supabase Storage — رفع وحذف صور التصاريح من Bucket "permits"
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * يرفع صورة تصريح (data URL أو Blob URL) إلى Supabase Storage bucket="permits".
+   * - إذا لم يكن Supabase مُعدّاً → يعيد data URL كما هو (Fallback محلي).
+   * - إذا كانت imageData مسبقاً https URL → يعيدها مباشرةً دون رفع مكرّر.
+   * @returns public URL من Supabase أو الـ data URL الأصلية عند الفشل.
+   */
+  static async uploadPermitImage(imageData: string): Promise<string> {
+    // إذا كانت URL خارجية بالفعل (مرفوعة سابقاً أو رابط خارجي)
+    if (imageData.startsWith('http://') || imageData.startsWith('https://')) {
+      return imageData;
+    }
+
+    const sb = getSupabase();
+    if (!getIsConfigured() || !sb) {
+      // لا يوجد Supabase — نحتفظ بـ Base64 محلياً
+      return imageData;
+    }
+
+    try {
+      // تحويل data URL إلى Blob
+      const res = await fetch(imageData);
+      const blob = await res.blob();
+      const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+      const fileName = `permits/${generateUUID()}.${ext}`;
+
+      const { error: uploadErr } = await sb.storage
+        .from('permits')
+        .upload(fileName, blob, { contentType: blob.type, upsert: false });
+
+      if (uploadErr) {
+        console.error('[Storage] Permit image upload error:', uploadErr.message);
+        return imageData; // Fallback: Base64
+      }
+
+      const { data: urlData } = sb.storage.from('permits').getPublicUrl(fileName);
+      return urlData?.publicUrl || imageData;
+    } catch (e) {
+      console.error('[Storage] uploadPermitImage exception:', e);
+      return imageData; // Fallback: Base64
+    }
+  }
+
+  /**
+   * يحذف ملف صورة تصريح من Supabase Storage.
+   * imageUrl يجب أن يكون https URL يحتوي على مسار الملف داخل bucket "permits".
+   */
+  static async deletePermitStorageFile(imageUrl: string): Promise<void> {
+    if (!imageUrl || imageUrl.startsWith('data:') || imageUrl === '') return;
+    const sb = getSupabase();
+    if (!getIsConfigured() || !sb) return;
+
+    try {
+      // استخراج المسار النسبي داخل الـ bucket من URL الكامل
+      // مثال: https://xxx.supabase.co/storage/v1/object/public/permits/permits/uuid.jpg
+      const match = imageUrl.match(/\/storage\/v1\/object\/public\/permits\/(.+)/);
+      if (!match) return;
+      const filePath = match[1];
+      const { error } = await sb.storage.from('permits').remove([filePath]);
+      if (error) console.error('[Storage] Permit file delete error:', error.message);
+    } catch (e) {
+      console.error('[Storage] deletePermitStorageFile exception:', e);
+    }
   }
 
   static async addPermitsBulk(
@@ -1909,11 +2238,52 @@ export class DataService {
     const orders = this.getOrders();
     const nextOrderNumber = orders.length > 0 ? Math.max(...orders.map(o => o.orderNumber)) + 1 : 1001;
 
+    // تسجيل الدفعة الأولى داخل سجل السدادات ليتم محاسبة الموظف عليها في تقرير آخر اليوم
+    const initialPayments: OrderPayment[] = [];
+    if (orderData.paidAmount > 0) {
+      initialPayments.push({
+        id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        amount: orderData.paidAmount,
+        method: 'manual',
+        byUserId: currentUser?.id || '',
+        byUserName: currentUser?.fullName || orderData.createdBy || 'المبيعات',
+        at: new Date().toISOString(),
+        note: 'دفعة أولى عند إنشاء الطلب',
+      });
+
+      // زيادة رصيد خزينة الكاش المناسبة وتوثيقها سحابياً
+      const accounts = this.getFinancialAccounts();
+      const payCur = orderData.currency || 'SAR';
+      const cashAccount =
+        accounts.find(a => a.isActive && a.type === 'wallet' && accountCurrency(a) === payCur) ||
+        accounts.find(a => a.isActive && a.type === 'wallet');
+      if (cashAccount) {
+        cashAccount.currentBalance = Math.round((cashAccount.currentBalance + orderData.paidAmount) * 100) / 100;
+        saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
+        if (getIsConfigured() && getSupabase()) {
+          getSupabase()!.rpc('rpc_adjust_balance', {
+            p_account_id: cashAccount.id,
+            p_delta: orderData.paidAmount,
+            p_reason: `تحصيل دفعة أولى للطلب #${nextOrderNumber}`,
+          }).then(({ error }) => {
+            if (error) {
+              Promise.resolve(
+                getSupabase()!.from('financial_accounts').update({
+                  current_balance: cashAccount.currentBalance,
+                }).eq('id', cashAccount.id)
+              ).catch(() => {});
+            }
+          });
+        }
+      }
+    }
+
     const newOrder: SalesOrder = {
       ...orderData,
       id: generateUUID(),
       orderNumber: nextOrderNumber,
       remainingAmount: orderData.totalAmount - orderData.paidAmount,
+      payments: initialPayments,
       createdAt: new Date().toISOString(),
     };
 
@@ -1944,6 +2314,7 @@ export class DataService {
       remaining_amount: newOrder.remainingAmount,
       currency: newOrder.currency || 'SAR',
       is_archived: newOrder.isArchived ?? false,
+      payments: newOrder.payments || [],
       notes: newOrder.notes || null,
       created_by: newOrder.createdBy,
     });
@@ -2136,13 +2507,32 @@ export class DataService {
     // كشف المزود من المرسل أولاً (عربي أو إنجليزي) ثم من متن الرسالة
     parsedProvider = detectProviderKeyword(sender) || detectProviderKeyword(rawBody) || 'other';
 
-    const amountRegex = /(?:مبلغ|استلام|تحويل|بمبلغ|قيمة|amount|received)\s*[:]?\s*([0-9]+(?:\.[0-9]{1,2})?)/i;
-    const matchAmount = rawBody.match(amountRegex);
-    if (matchAmount && matchAmount[1]) {
-      parsedAmount = parseFloat(matchAmount[1]);
+    // تنظيف فواصل الآلاف في الأرقام (مثل 1,500.00 إلى 1500.00) لتسهيل القراءة الصحيحة
+    const normalizedBody = rawBody.replace(/(\d),(\d)/g, '$1$2');
+
+    // 1. مبالغ مصحوبة بكلمات مفتاحية صريحة (إيداع / استلام / تحويل / شحن / دفع / وارد)
+    const keywordAmountRegex = /(?:مبلغ|استلام|تحويل|بمبلغ|قيمة|إيداع|ايداع|أودع|شحن|وارد|تم\s*دفع|amount|received|deposit|credited|paid)\s*[:]?\s*([0-9]+(?:\.[0-9]{1,2})?)/i;
+    // 2. مبالغ مصحوبة بالعملة مباشرة (مثل: 500 ر.س أو 1500 ج.م أو 200 SAR)
+    const currencyAmountRegex = /([0-9]+(?:\.[0-9]{1,2})?)\s*(?:ر\.?س|ريال|ج\.?م|جنيه|SAR|EGP)/i;
+
+    const matchKw = normalizedBody.match(keywordAmountRegex);
+    const matchCur = normalizedBody.match(currencyAmountRegex);
+
+    if (matchKw && matchKw[1]) {
+      parsedAmount = parseFloat(matchKw[1]);
+    } else if (matchCur && matchCur[1]) {
+      parsedAmount = parseFloat(matchCur[1]);
     } else {
-      const anyNum = rawBody.match(/([0-9]{2,6}(?:\.[0-9]{1,2})?)/);
-      if (anyNum) parsedAmount = parseFloat(anyNum[1]);
+      // بحث عن رقم منطقي لا يمثل سنة (2024..2030) ولا يبدأ بصفر كالهاتف
+      const potentialNums = normalizedBody.match(/\b([1-9][0-9]{1,5}(?:\.[0-9]{1,2})?)\b/g);
+      if (potentialNums) {
+        const nonYear = potentialNums.find(n => {
+          const val = parseFloat(n);
+          return val < 2020 || val > 2030;
+        });
+        if (nonYear) parsedAmount = parseFloat(nonYear);
+        else parsedAmount = parseFloat(potentialNums[0]);
+      }
     }
 
     const refRegex = /(?:رقم العملية|مرجع|المرجع|العملية|ref|reference|txn|id)\s*[:]?\s*([A-Za-z0-9_-]{5,20})/i;
@@ -2674,12 +3064,20 @@ export class DataService {
       account.currentBalance = Math.round((account.currentBalance + smsAmount) * 100) / 100;
       saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
 
-      // Push updated balance to cloud
+      // Push updated balance to cloud via atomic RPC (تعديل رصيد آمن متوافق مع RLS)
       if (getIsConfigured() && getSupabase()) {
-        getSupabase()!.from('financial_accounts').update({
-          current_balance: account.currentBalance,
-        }).eq('id', account.id).then(({ error }) => {
-          if (error) console.error('Cloud account balance update error:', error);
+        getSupabase()!.rpc('rpc_adjust_balance', {
+          p_account_id: account.id,
+          p_delta: smsAmount,
+          p_reason: `مطابقة سداد SMS للطلب #${order.orderNumber}`,
+        }).then(({ error }) => {
+          if (error) {
+            Promise.resolve(
+              getSupabase()!.from('financial_accounts').update({
+                current_balance: account.currentBalance,
+              }).eq('id', account.id)
+            ).catch(() => {});
+          }
         });
       }
     }
@@ -2766,9 +3164,7 @@ export class DataService {
     order.payments = [...(order.payments || []), payment];
     saveToStorage(STORAGE_KEYS.ORDERS, orders);
 
-    // ✅ السداد اليدوي (نقدي/تحويل مباشر) يجب أن يزيد رصيد الخزنة أيضاً —
-    // قبل الإصلاح كان يُسجَّل على الطلب فقط، فمجموع المحصّل في تقارير الموظفين
-    // كان دائماً أكبر من أرصدة الخزائن ولا يمكن تسويتهما أبداً.
+    // ✅ السداد اليدوي (نقدي/تحويل مباشر) يجب أن يزيد رصيد الخزنة أيضاً عبر rpc_adjust_balance
     const accounts = this.getFinancialAccounts();
     const payCurrency = getOrderCurrency(order);
     const cashAccount =
@@ -2778,10 +3174,18 @@ export class DataService {
       cashAccount.currentBalance = Math.round((cashAccount.currentBalance + amountNum) * 100) / 100;
       saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
       if (getIsConfigured() && getSupabase()) {
-        getSupabase()!.from('financial_accounts').update({
-          current_balance: cashAccount.currentBalance,
-        }).eq('id', cashAccount.id).then(({ error }) => {
-          if (error) console.error('Cloud manual-payment account update error:', error);
+        getSupabase()!.rpc('rpc_adjust_balance', {
+          p_account_id: cashAccount.id,
+          p_delta: amountNum,
+          p_reason: `سداد يدوي مباشر للطلب #${order.orderNumber}`,
+        }).then(({ error }) => {
+          if (error) {
+            Promise.resolve(
+              getSupabase()!.from('financial_accounts').update({
+                current_balance: cashAccount.currentBalance,
+              }).eq('id', cashAccount.id)
+            ).catch(() => {});
+          }
         });
       }
     }
@@ -3188,5 +3592,40 @@ export class DataService {
       accounts: demo.financialAccounts.length,
       logs: demo.auditLogs.length,
     };
+  }
+
+  /**
+   * الفحص الذاتي التلقائي لمساحة التخزين عند الإقلاع — يفرغ المخلفات ويقلص الصور الضخمة فوراً
+   */
+  static selfHealStorage(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.DAILY_SCENARIO);
+      localStorage.removeItem('rawdah_debug');
+      const rawPermits = localStorage.getItem(STORAGE_KEYS.PERMITS);
+      if (rawPermits && rawPermits.length > 400_000) {
+        try {
+          const parsed = JSON.parse(rawPermits);
+          if (Array.isArray(parsed)) {
+            const pruned = parsed.map((p, idx) => (idx >= 10 && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image') ? { ...p, imageUrl: '' } : p));
+            localStorage.setItem(STORAGE_KEYS.PERMITS, JSON.stringify(pruned));
+          }
+        } catch {
+          // ignore
+        }
+      }
+      const rawLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
+      if (rawLogs && rawLogs.length > 100_000) {
+        try {
+          const parsed = JSON.parse(rawLogs);
+          if (Array.isArray(parsed) && parsed.length > 10) {
+            localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(parsed.slice(0, 10)));
+          }
+        } catch {
+          localStorage.removeItem(STORAGE_KEYS.LOGS);
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 }

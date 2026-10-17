@@ -80,7 +80,7 @@ export const CustomerSelfRegister: React.FC = () => {
 
       setIsSuccess(true);
     } catch (err: any) {
-      setErrorMessage('حدث خطأ أثناء حفظ البيانات، يرجى المحاولة مرة أخرى.');
+      setErrorMessage(err?.message || 'حدث خطأ أثناء حفظ البيانات، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsSubmitting(false);
     }

@@ -6,11 +6,13 @@ import {
   ShieldCheck, 
   ArrowLeft, 
   Eye, 
-  EyeOff
+  EyeOff,
+  CloudCog
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { DataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { CloudSetupModal } from './CloudSetupModal';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
@@ -30,6 +32,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showCloudModal, setShowCloudModal] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,55 +40,76 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     setErrorMessage('');
 
     // مهلة قصيرة لإتاحة رسم حالة التحميل
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     // لا توجد حسابات افتراضية داخل حزمة الكود: كل موظف يُنشئه المدير من لوحة
     // Supabase (database/schema.sql — القسم 10)، والمصادقة تجري على الخادم فقط.
     if (!isSupabaseConfigured || !supabase) {
-      setErrorMessage('النظام غير مرتبط بخدمة المصادقة. يرجى ربط Supabase من شاشة الإعدادات قبل تسجيل الدخول.');
+      setErrorMessage('النظام غير مرتبط بخدمة المصادقة السحابية Supabase. انقر على «إعداد الاتصال بالسحابة» بالأسفل.');
       setIsLoading(false);
       return;
     }
 
-    const profile = DataService.getProfiles().find(
-      (p) => normUsername(p.username) === normUsername(username)
-    );
-
-    if (!profile) {
-      setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
-      setIsLoading(false);
-      return;
-    }
-
-    // ── المصادقة عبر Supabase Auth (التحقق يجري على الخادم، لا في المتصفح) ──
-    const { error } = await supabase.auth.signInWithPassword({
+    // ── 1. المصادقة عبر Supabase Auth أولاً (التحقق يجري على الخادم) ──
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: toAuthEmail(username),
       password,
     });
 
-    if (error) {
+    if (authError || !authData?.user) {
       setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
       setIsLoading(false);
       return;
     }
 
-    // جلسة مصادقة سارية الآن — مزامنة كاملة تجلب الموظفين بأحدث حالة
-    await DataService.syncFromCloud();
-    const found =
-      DataService.getProfiles().find(
-        (p) => normUsername(p.username) === normUsername(username)
-      ) || profile;
+    // ── 2. المستخدم مصادق بنجاح الآن: استرجاع البروفايل من السحابة مباشرة ──
+    try {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .maybeSingle();
 
-    if (!found.isActive) {
-      await supabase.auth.signOut();
-      setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+      // مزامنة البيانات الكاملة
+      await DataService.syncFromCloud();
+
+      const found: UserProfile | undefined = profileRow ? {
+        id: profileRow.id,
+        fullName: profileRow.full_name,
+        username: profileRow.username || username,
+        phoneNumber: profileRow.phone_number || '',
+        whatsappNumber: profileRow.whatsapp_number || '',
+        role: profileRow.role,
+        isActive: profileRow.is_active ?? true,
+        avatarUrl: profileRow.avatar_url || undefined,
+        customPermissions: profileRow.custom_permissions || { view: true, create: true, edit: true, delete: false, reports: false },
+        createdAt: profileRow.created_at || new Date().toISOString(),
+      } : DataService.getProfiles().find(
+        (p) => normUsername(p.username) === normUsername(username) || p.id === authData.user.id
+      );
+
+      if (!found) {
+        setErrorMessage('تم تسجيل الدخول لكن لم يتم العثور على ملف موظف مرتبط بهذا الحساب. تواصل مع الإدارة.');
+        await supabase.auth.signOut();
+        setIsLoading(false);
+        return;
+      }
+
+      if (!found.isActive) {
+        await supabase.auth.signOut();
+        setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+        setIsLoading(false);
+        return;
+      }
+
+      DataService.setCurrentUser(found);
+      onLoginSuccess(found);
+    } catch (syncErr) {
+      console.error('Error post-login:', syncErr);
+      setErrorMessage('حدث خطأ أثناء تحميل بيانات الجلسة، أعد المحاولة.');
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    DataService.setCurrentUser(found);
-    onLoginSuccess(found);
-    setIsLoading(false);
   };
 
   return (
@@ -213,6 +237,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 <ArrowLeft className="w-3.5 h-3.5" />
               </a>
             </div>
+
+            {/* Cloud connection link for admin initial setup */}
+            <div className="pt-2 flex flex-col items-center justify-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowCloudModal(true)}
+                className="text-[11px] text-slate-400 hover:text-emerald-700 flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg hover:bg-slate-50"
+              >
+                <CloudCog className="w-3.5 h-3.5" />
+                <span>إعداد الاتصال بالسحابة (Supabase Cloud Setup)</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await DataService.cleanupAndFreeStorage();
+                  alert(`تم تفريغ مساحة المتصفح بنجاح (تم توفير ${res.freedKb} ك.ب).`);
+                  window.location.reload();
+                }}
+                className="text-[11px] text-slate-400 hover:text-amber-700 flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg hover:bg-slate-50"
+                title="اضغط هنا لتفريغ الذاكرة المؤقتة إذا ظهرت لك رسالة امتلاء مساحة الهاتف"
+              >
+                <span>🧹 تفريغ مساحة المتصفح وحل امتلاء التخزين</span>
+              </button>
+            </div>
           </form>
 
         </div>
@@ -223,6 +271,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         </div>
 
       </div>
+
+      <CloudSetupModal
+        isOpen={showCloudModal}
+        onClose={() => setShowCloudModal(false)}
+      />
 
     </div>
   );

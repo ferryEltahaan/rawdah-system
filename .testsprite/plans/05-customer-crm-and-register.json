@@ -1,0 +1,13 @@
+{
+  "type": "frontend",
+  "name": "05 - Customer CRM and Self Registration",
+  "planSteps": [
+    { "type": "action", "description": "Login as admin" },
+    { "type": "action", "description": "Click on 'العملاء وحسابات الواتساب' from sidebar" },
+    { "type": "assertion", "description": "Customers table is displayed" },
+    { "type": "action", "description": "Click 'إضافة عميل جديد'" },
+    { "type": "action", "description": "Fill customer name 'عبدالرحمن الشهري' and phone '0551234567'" },
+    { "type": "action", "description": "Submit customer form" },
+    { "type": "assertion", "description": "Customer 'عبدالرحمن الشهري' appears in the table with formatted phone '+966551234567'" }
+  ]
+}
