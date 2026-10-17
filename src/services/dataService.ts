@@ -2175,6 +2175,53 @@ export class DataService {
     }
   }
 
+  /**
+   * يرفع جميع صور التصاريح المخزنة كـ Base64 محلياً إلى Supabase Storage
+   * ويحدّث روابطها في المخزون المحلي وقاعدة بيانات Supabase.
+   */
+  static async migratePermitImagesToStorage(): Promise<{ migrated: number; failed: number }> {
+    const sb = getSupabase();
+    if (!getIsConfigured() || !sb) return { migrated: 0, failed: 0 };
+
+    const permits = this.getPermits();
+    const base64Permits = permits.filter(p => p.imageUrl && p.imageUrl.startsWith('data:'));
+    if (base64Permits.length === 0) return { migrated: 0, failed: 0 };
+
+    let migrated = 0;
+    let failed = 0;
+
+    for (const permit of base64Permits) {
+      try {
+        const publicUrl = await this.uploadPermitImage(permit.imageUrl);
+        if (publicUrl && (publicUrl.startsWith('http://') || publicUrl.startsWith('https://'))) {
+          permit.imageUrl = publicUrl;
+          migrated++;
+        } else {
+          failed++;
+        }
+      } catch (err) {
+        console.error('[Storage Migration] Failed for permit:', permit.permitCode, err);
+        failed++;
+      }
+    }
+
+    if (migrated > 0) {
+      saveToStorage(STORAGE_KEYS.PERMITS, permits);
+      // تحديث الصفوف في جدول permits السحابي
+      try {
+        for (const p of base64Permits) {
+          if (p.imageUrl.startsWith('http')) {
+            await sb.from('permits').update({ image_url: p.imageUrl }).eq('id', p.id);
+          }
+        }
+      } catch (cloudErr) {
+        console.warn('[Storage Migration] Cloud DB update warning:', cloudErr);
+      }
+    }
+
+    return { migrated, failed };
+  }
+
   static async addPermitsBulk(
     date: string, 
     hour: number, 

@@ -17,7 +17,8 @@ import {
   MessageCircle,
   Printer,
   Share2,
-  ArrowRightLeft
+  ArrowRightLeft,
+  CloudUpload
 } from 'lucide-react';
 import { Permit, PermitStatus, Customer, UserProfile, SalesOrder } from '../types';
 import { DataService } from '../services/dataService';
@@ -97,6 +98,9 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
   const [moveDestHour, setMoveDestHour] = useState<number>(0);
   const [moveDestMinute, setMoveDestMinute] = useState<0 | 20 | 40>(0);
   const [isMoving, setIsMoving] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+
+  const base64Count = permits.filter(p => p.imageUrl && p.imageUrl.startsWith('data:')).length;
 
   const refreshData = () => {
     setPermits(DataService.getPermits());
@@ -104,8 +108,38 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
     setOrders(DataService.getOrders());
   };
 
+  const handleMigrateToCloud = async () => {
+    if (isMigrating) return;
+    setIsMigrating(true);
+    toast.info('جاري رفع صور التصاريح إلى Supabase Storage...');
+    try {
+      const res = await DataService.migratePermitImagesToStorage();
+      if (res.migrated > 0) {
+        toast.success(`✅ تم رفع ${res.migrated} صورة تصريح إلى Supabase Storage بنجاح!`);
+        refreshData();
+      } else if (res.failed > 0) {
+        toast.error('تعذر رفع بعض الصور للسحابة، تأكد من الاتصال بـ Supabase');
+      } else {
+        toast.info('جميع صور التصاريح مرفوعة مسبقاً على السحابة');
+      }
+    } catch {
+      toast.error('حدث خطأ أثناء نقل الصور للسحابة');
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   useEffect(() => {
     window.addEventListener('rawdah_storage_update', refreshData);
+
+    // رفع تلقائي لأي تصاريح قديمة غير مرفوعة للسحابة عند فتح الشاشة
+    DataService.migratePermitImagesToStorage().then(res => {
+      if (res.migrated > 0) {
+        toast.success(`☁️ تم رفع ${res.migrated} صورة تصريح إلى التخزين السحابي تلقائياً!`);
+        refreshData();
+      }
+    });
+
     return () => window.removeEventListener('rawdah_storage_update', refreshData);
   }, []);
 
@@ -385,6 +419,19 @@ ${companyName}`;
             <HardDrive className="w-4 h-4 text-amber-600" />
             <span>تفريغ وضغط الذاكرة</span>
           </button>
+
+          {/* Cloud Migrate Button */}
+          {base64Count > 0 && (
+            <button
+              onClick={handleMigrateToCloud}
+              disabled={isMigrating}
+              className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-900 font-bold px-3.5 py-2.5 rounded-2xl text-xs transition-all shadow-sm"
+              title="رفع صور التصاريح المحفوظة محلياً إلى Supabase Storage"
+            >
+              <CloudUpload className={`w-4 h-4 text-blue-600 ${isMigrating ? 'animate-bounce' : ''}`} />
+              <span>{isMigrating ? 'جاري الرفع للسحابة...' : `رفع الصور للسحابة (${base64Count})`}</span>
+            </button>
+          )}
 
           {/* Bulk Upload Button (if allowed) */}
           {canUpload && (
