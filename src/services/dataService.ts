@@ -2105,15 +2105,39 @@ export class DataService {
     }
 
     try {
-      // تحويل data URL إلى Blob
-      const res = await fetch(imageData);
-      const blob = await res.blob();
+      let blob: Blob;
+      let ext = 'jpg';
+
+      if (imageData.startsWith('data:')) {
+        try {
+          const parts = imageData.split(',');
+          const mimeMatch = parts[0].match(/:(.*?);/);
+          const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+          ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+          const byteString = atob(parts[1]);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          blob = new Blob([ab], { type: mime });
+        } catch {
+          const res = await fetch(imageData);
+          blob = await res.blob();
+          ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+        }
+      } else {
+        const res = await fetch(imageData);
+        blob = await res.blob();
+        ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+      }
+
       // اسم الملف مباشرة داخل الـ bucket دون مجلد فرعي مكرر
       const fileName = `${generateUUID()}.${ext}`;
 
       const { error: uploadErr } = await sb.storage
         .from('permits')
-        .upload(fileName, blob, { contentType: blob.type, upsert: false });
+        .upload(fileName, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
 
       if (uploadErr) {
         console.warn('[Storage] Permit image upload failed, falling back to local base64:', uploadErr.message);
