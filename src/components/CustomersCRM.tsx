@@ -130,7 +130,7 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
     setShowAddModal(true);
   };
 
-  const handleSaveCustomer = (e: React.FormEvent) => {
+  const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const wValidation = validateWhatsappNumber(whatsappNumber);
@@ -148,7 +148,7 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
       normalizedAdditional = aValidation.normalized;
     }
 
-    DataService.saveCustomer({
+    await DataService.saveCustomer({
       id: editingCustomer ? editingCustomer.id : undefined,
       fullName,
       whatsappNumber: wValidation.normalized,

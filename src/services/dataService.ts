@@ -433,7 +433,28 @@ export class DataService {
           totalSpent: parseFloat(c.total_spent || '0'),
           createdAt: c.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.CUSTOMERS, mappedCusts, true);
+        
+        // دمج ذكي: لا نمسح العملاء المحليين إطلاقاً إذا لم يكونوا قد وصلوا للسحابة بعد
+        const localCusts = loadFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+        const custMap = new Map<string, Customer>();
+        mappedCusts.forEach(c => custMap.set(c.id, c));
+        
+        // الاحتفاظ بأي عميل تم تسجيله محلياً ولم يُجلب من السحابة، مع إعادة محاولة رفعه
+        localCusts.forEach(lc => {
+          if (!custMap.has(lc.id)) {
+            custMap.set(lc.id, lc);
+            sb.from('customers').upsert({
+              id: lc.id,
+              full_name: lc.fullName,
+              whatsapp_number: lc.whatsappNumber,
+              additional_phone: lc.additionalPhone || null,
+              nickname: lc.nickname || null,
+              notes: lc.notes || null,
+            }, { onConflict: 'id' }).then(() => {}, () => {});
+          }
+        });
+        
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, Array.from(custMap.values()), true);
       }
 
       // 3. Sync Permits
@@ -456,7 +477,17 @@ export class DataService {
           notes: p.notes,
           createdAt: p.created_at,
         }));
-        saveToStorage(STORAGE_KEYS.PERMITS, mappedPermits, true);
+
+        const localPermits = loadFromStorage<Permit[]>(STORAGE_KEYS.PERMITS, []);
+        const permMap = new Map<string, Permit>();
+        mappedPermits.forEach(p => permMap.set(p.id, p));
+        localPermits.forEach(lp => {
+          if (!permMap.has(lp.id)) {
+            permMap.set(lp.id, lp);
+          }
+        });
+
+        saveToStorage(STORAGE_KEYS.PERMITS, Array.from(permMap.values()), true);
       }
 
       // 4. Sync Orders
@@ -490,7 +521,6 @@ export class DataService {
             customerName: cust?.fullName || o.customer_name || '',
             customerWhatsapp: cust?.whatsappNumber || o.customer_whatsapp || '',
             permitsCount: o.permits_count,
-            // التقسيم ذكر/أنثى — يُقرأ من العمود السحابي، ومع غيبه (عمود غير مضاف بعد) يُؤخَذ من المحلي
             permitsCountMale: o.permits_count_male ?? local?.permitsCountMale,
             permitsCountFemale: o.permits_count_female ?? local?.permitsCountFemale,
             targetDate: o.target_date,
@@ -505,7 +535,6 @@ export class DataService {
             currency: o.currency || local?.currency || 'SAR',
             isArchived: o.is_archived ?? local?.isArchived ?? false,
             archivedAt: o.archived_at || local?.archivedAt || undefined,
-            // سجل السدادات + آخر تذكير — أعمدة اختيارية، ومع غيابها تُؤخَذ من النسخة المحلية
             payments: Array.isArray(o.payments) ? o.payments : local?.payments,
             lastReminderAt: o.last_reminder_at || local?.lastReminderAt || undefined,
             notes: o.notes,
@@ -514,7 +543,16 @@ export class DataService {
             createdAt: o.created_at,
           };
         });
-        saveToStorage(STORAGE_KEYS.ORDERS, mappedOrders);
+
+        const orderMap = new Map<string, SalesOrder>();
+        mappedOrders.forEach(o => orderMap.set(o.id, o));
+        localOrders.forEach(lo => {
+          if (!orderMap.has(lo.id)) {
+            orderMap.set(lo.id, lo);
+          }
+        });
+
+        saveToStorage(STORAGE_KEYS.ORDERS, Array.from(orderMap.values()));
       }
 
       // 5. Sync SMS Messages
