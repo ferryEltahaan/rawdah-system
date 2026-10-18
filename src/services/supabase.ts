@@ -10,14 +10,15 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export const AUTH_EMAIL_DOMAIN = 'rawdah.app';
 
 export function toAuthEmail(usernameOrEmail: string): string {
-  const v = usernameOrEmail.toLowerCase().trim();
+  const v = (usernameOrEmail || '').toLowerCase().trim().replace(/^@+|@+$/g, '');
   return v.includes('@') ? v : `${v}@${AUTH_EMAIL_DOMAIN}`;
 }
 
 // مطابقة مرنة: البروفايلات المتزامنة من السحابة قد تخزّن اسم المستخدم كبريد
 // كامل (admin@rawdah.app) بينما يُعرض الاسم المختصر (admin) — نوحّد الصيغتين
 export function normUsername(u: string): string {
-  return (u || '').toLowerCase().trim().replace(new RegExp(`@${AUTH_EMAIL_DOMAIN.replace('.', '\\.')}$`), '');
+  const clean = (u || '').toLowerCase().trim().replace(/^@+|@+$/g, '');
+  return clean.replace(new RegExp(`@${AUTH_EMAIL_DOMAIN.replace('.', '\\.')}$`), '');
 }
 
 const DEFAULT_SUPABASE_URL = 'https://aeuavoqhrhzsxblrddlc.supabase.co';
