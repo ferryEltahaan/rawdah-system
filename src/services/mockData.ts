@@ -9,7 +9,7 @@ import {
 } from '../types';
 
 export const initialCompanySettings: CompanySettings = {
-  id: 'comp-1',
+  id: '00000000-0000-0000-0000-000000000001',
   companyNameAr: 'مؤسسة حجز تصاريح الروضة الشريفة',
   companyNameEn: 'Rawdah Permits Enterprise',
   address: 'المدينة المنورة - المنطقة المركزية',
@@ -26,7 +26,7 @@ export const initialCompanySettings: CompanySettings = {
 
 export const initialFinancialAccounts: FinancialAccount[] = [
   {
-    id: 'acc-1',
+    id: '00000000-0000-0000-0000-000000000011',
     type: 'wallet',
     provider: 'vodafone_cash',
     accountName: 'فودافون كاش',
@@ -38,7 +38,7 @@ export const initialFinancialAccounts: FinancialAccount[] = [
     createdAt: new Date().toISOString(),
   },
   {
-    id: 'acc-2',
+    id: '00000000-0000-0000-0000-000000000012',
     type: 'wallet',
     provider: 'instapay',
     accountName: 'إنستاباي InstaPay',
@@ -50,7 +50,7 @@ export const initialFinancialAccounts: FinancialAccount[] = [
     createdAt: new Date().toISOString(),
   },
   {
-    id: 'acc-3',
+    id: '00000000-0000-0000-0000-000000000013',
     type: 'bank',
     provider: 'al_rajhi',
     accountName: 'مصرف الراجحي',
