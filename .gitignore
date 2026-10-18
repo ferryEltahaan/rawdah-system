@@ -38,6 +38,7 @@ Thumbs.db
 .env.local
 dist
 dist.zip
+tests/screenshots*/
 node_modules
 
 # Scratch/test scripts (may contain secrets — keep local only)
