@@ -543,23 +543,29 @@ export class DataService {
       if (profileList && profileList.length > 0) {
         const storedProfiles = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
         const localPasswords: Record<string, string> = {};
-        storedProfiles.forEach(p => { localPasswords[p.id] = p.password; });
+        storedProfiles.forEach(p => { 
+          if (p.password) {
+            localPasswords[p.id] = p.password;
+            if (p.username) localPasswords[p.username.toLowerCase().trim()] = p.password;
+          }
+        });
 
-        const mappedProfiles: UserProfile[] = profileList.map(p => ({
-          id: p.id,
-          fullName: p.full_name,
-          username: p.username || '',
-          // كلمات المرور لا تُخزن أبداً في السحابة ولا في هذا التطبيق — المصادقة
-          // كلها عبر Supabase Auth، فلا حقل كلمة مرور في البروفايل المُزامن.
-          password: localPasswords[p.id] || '',
-          phoneNumber: p.phone_number || '',
-          whatsappNumber: p.whatsapp_number || '',
-          role: p.role,
-          isActive: p.is_active ?? true,
-          avatarUrl: p.avatar_url || undefined,
-          customPermissions: p.custom_permissions || { view: true, create: true, edit: true, delete: false, reports: false },
-          createdAt: p.created_at,
-        }));
+        const mappedProfiles: UserProfile[] = profileList.map(p => {
+          const userKey = (p.username || '').toLowerCase().trim();
+          return {
+            id: p.id,
+            fullName: p.full_name,
+            username: p.username || '',
+            password: localPasswords[p.id] || (userKey ? localPasswords[userKey] : '') || '',
+            phoneNumber: p.phone_number || '',
+            whatsappNumber: p.whatsapp_number || '',
+            role: p.role,
+            isActive: p.is_active ?? true,
+            avatarUrl: p.avatar_url || undefined,
+            customPermissions: p.custom_permissions || { view: true, create: true, edit: true, delete: false, reports: false },
+            createdAt: p.created_at,
+          };
+        });
 
         // الموظفون المحليون غير الموجودين سحابياً (بالمعرّف أو باسم المستخدم) يُدمجون ولا يُمسحون عند المزامنة
         const cloudIds = new Set(profileList.map(p => p.id));

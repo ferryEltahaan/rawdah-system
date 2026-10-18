@@ -12,18 +12,29 @@ import {
 import { UserProfile } from '../types';
 import { DataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { verifyPassword } from '../utils/passwordHash';
 import { CloudSetupModal } from './CloudSetupModal';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
 }
 
-// مطابقة مرنة: البروفايلات المتزامنة من السحابة قد تخزّن اسم المستخدم كبريد كامل
-// (admin@rawdah.app) بينما تسجّل الدخول بالاسم المختصر (admin) — نوحّد الصيغتين
-const normUsername = (u: string) => u.toLowerCase().trim().replace(/@rawdah\.app$/, '');
+// مطابقة مرنة: إزالة أي بادئة أو لاحقة @ وتوحيد الصيغة
+const normUsername = (u: string) => 
+  (u || '')
+    .toLowerCase()
+    .trim()
+    .replace(/@rawdah\.app$/, '')
+    .replace(/^@+/, '')
+    .replace(/@+$/, '');
+
 const toAuthEmail = (u: string) => {
-  const v = u.toLowerCase().trim();
-  return v.includes('@') ? v : `${v}@rawdah.app`;
+  const v = (u || '').toLowerCase().trim();
+  if (v.includes('@') && !v.endsWith('@rawdah.app') && v.includes('.')) {
+    return v;
+  }
+  const clean = normUsername(v);
+  return `${clean}@rawdah.app`;
 };
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
@@ -42,74 +53,106 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     // مهلة قصيرة لإتاحة رسم حالة التحميل
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // لا توجد حسابات افتراضية داخل حزمة الكود: كل موظف يُنشئه المدير من لوحة
-    // Supabase (database/schema.sql — القسم 10)، والمصادقة تجري على الخادم فقط.
-    if (!isSupabaseConfigured || !supabase) {
-      setErrorMessage('النظام غير مرتبط بخدمة المصادقة السحابية Supabase. انقر على «إعداد الاتصال بالسحابة» بالأسفل.');
+    const cleanUser = normUsername(username);
+    if (!cleanUser) {
+      setErrorMessage('يرجى إدخال اسم المستخدم.');
       setIsLoading(false);
       return;
     }
 
-    // ── 1. المصادقة عبر Supabase Auth أولاً (التحقق يجري على الخادم) ──
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: toAuthEmail(username),
-      password,
-    });
+    // البحث في البروفايلات المسجلة بالنظام محلياً أولاً
+    const localProfile = DataService.getProfiles().find(
+      (p) => normUsername(p.username) === cleanUser
+    );
 
-    if (authError || !authData?.user) {
-      setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
-      setIsLoading(false);
-      return;
-    }
+    // ── 1. محاولة المصادقة السحابية عبر Supabase Auth أولاً ──
+    let cloudAuthUser: any = null;
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: toAuthEmail(username),
+          password,
+        });
 
-    // ── 2. المستخدم مصادق بنجاح الآن: استرجاع البروفايل من السحابة مباشرة ──
-    try {
-      const { data: profileRow } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authData.user.id)
-        .maybeSingle();
-
-      // مزامنة البيانات الكاملة
-      await DataService.syncFromCloud();
-
-      const found: UserProfile | undefined = profileRow ? {
-        id: profileRow.id,
-        fullName: profileRow.full_name,
-        username: profileRow.username || username,
-        phoneNumber: profileRow.phone_number || '',
-        whatsappNumber: profileRow.whatsapp_number || '',
-        role: profileRow.role,
-        isActive: profileRow.is_active ?? true,
-        avatarUrl: profileRow.avatar_url || undefined,
-        customPermissions: profileRow.custom_permissions || { view: true, create: true, edit: true, delete: false, reports: false },
-        createdAt: profileRow.created_at || new Date().toISOString(),
-      } : DataService.getProfiles().find(
-        (p) => normUsername(p.username) === normUsername(username) || p.id === authData.user.id
-      );
-
-      if (!found) {
-        setErrorMessage('تم تسجيل الدخول لكن لم يتم العثور على ملف موظف مرتبط بهذا الحساب. تواصل مع الإدارة.');
-        await supabase.auth.signOut();
-        setIsLoading(false);
-        return;
+        if (!authError && authData?.user) {
+          cloudAuthUser = authData.user;
+        }
+      } catch (e) {
+        console.warn('Supabase auth attempt:', e);
       }
+    }
 
-      if (!found.isActive) {
-        await supabase.auth.signOut();
+    // ── 2. في حالة نجاح المصادقة السحابية (مثل حساب المدير العام) ──
+    if (cloudAuthUser) {
+      try {
+        const { data: profileRow } = await supabase!
+          .from('profiles')
+          .select('*')
+          .eq('id', cloudAuthUser.id)
+          .maybeSingle();
+
+        await DataService.syncFromCloud();
+
+        const found: UserProfile | undefined = profileRow ? {
+          id: profileRow.id,
+          fullName: profileRow.full_name,
+          username: profileRow.username || username,
+          phoneNumber: profileRow.phone_number || '',
+          whatsappNumber: profileRow.whatsapp_number || '',
+          role: profileRow.role,
+          isActive: profileRow.is_active ?? true,
+          avatarUrl: profileRow.avatar_url || undefined,
+          customPermissions: profileRow.custom_permissions || { view: true, create: true, edit: true, delete: false, reports: false },
+          createdAt: profileRow.created_at || new Date().toISOString(),
+        } : DataService.getProfiles().find(
+          (p) => normUsername(p.username) === cleanUser || p.id === cloudAuthUser.id
+        ) || localProfile;
+
+        if (found) {
+          if (!found.isActive) {
+            await supabase!.auth.signOut();
+            setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+            setIsLoading(false);
+            return;
+          }
+
+          DataService.setCurrentUser(found);
+          localStorage.setItem('rawdah_session_logged_in', 'true');
+          onLoginSuccess(found);
+          setIsLoading(false);
+          return;
+        }
+      } catch (syncErr) {
+        console.error('Error post-login:', syncErr);
+      }
+    }
+
+    // ── 3. في حالة الموظفين المُنشئين من النظام (التحقق من كلمة المرور المشفرة محلياً) ──
+    if (localProfile) {
+      if (!localProfile.isActive) {
         setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
         setIsLoading(false);
         return;
       }
 
-      DataService.setCurrentUser(found);
-      onLoginSuccess(found);
-    } catch (syncErr) {
-      console.error('Error post-login:', syncErr);
-      setErrorMessage('حدث خطأ أثناء تحميل بيانات الجلسة، أعد المحاولة.');
-    } finally {
-      setIsLoading(false);
+      if (!localProfile.password) {
+        setErrorMessage('هذا الحساب لا يحتوي على كلمة مرور محفوظة. تواصل مع الإدارة.');
+        setIsLoading(false);
+        return;
+      }
+
+      const { matches } = await verifyPassword(password, localProfile.password);
+      if (matches) {
+        DataService.setCurrentUser(localProfile);
+        localStorage.setItem('rawdah_session_logged_in', 'true');
+        onLoginSuccess(localProfile);
+        setIsLoading(false);
+        return;
+      }
     }
+
+    setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة.');
+    setIsLoading(false);
   };
 
   return (
