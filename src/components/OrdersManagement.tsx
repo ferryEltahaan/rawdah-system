@@ -272,7 +272,13 @@ ${accountsList}`);
       const claimed = direct.length > 0
         ? direct
         : permits.filter(p => p.status === 'assigned' && p.assignedToCustomerId === order.customerId);
-      const codes = claimed.map(p => `• ${p.permitCode} — ${p.slotDate} (${p.slotFormatted})`).join('\n');
+      const codes = claimed.map(p => {
+        let text = `• كود التصريح: ${p.permitCode} — ${p.slotDate} (${p.slotFormatted})`;
+        if (p.imageUrl && p.imageUrl.startsWith('http')) {
+          text += `\n  🔗 رابط صورة التصريح: ${p.imageUrl}`;
+        }
+        return text;
+      }).join('\n');
       sections.push(`تصاريحكم${claimed.length ? ` (${claimed.length})` : ''}:
 ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكود فور اعتمادها.'}`);
     }
@@ -285,6 +291,16 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
   };
 
   const handleOpenWhatsApp = (order: SalesOrder) => {
+    // محاولة نسخ صورة أول تصريح تلقائياً لمستخدمي الكمبيوتر (Ctrl + V)
+    const direct = (order.assignedPermitIds || []).map(id => permitById[id]).filter(Boolean) as Permit[];
+    const claimed = direct.length > 0 
+      ? direct 
+      : permits.filter(p => p.status === 'assigned' && p.assignedToCustomerId === order.customerId);
+    const firstWithImage = claimed.find(p => p.imageUrl);
+    if (firstWithImage?.imageUrl) {
+      imageActions.copyOrDownload(firstWithImage.imageUrl, `تصريح_${firstWithImage.permitCode}.png`);
+    }
+
     window.open(
       `https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(order))}`,
       '_blank',
@@ -357,12 +373,15 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
   const handleDownloadPermitImage = (imageUrl: string, permitCode: string) =>
     imageActions.download(imageUrl, `${permitCode}.png`);
 
-  // مشاركة مباشرة عبر زر المشاركة الأصلي بالجوال (يفتح قائمة واتساب/الرسائل بالصورة مرفقة)
-  const handleSharePermitImage = (imageUrl: string, permitCode: string) =>
-    imageActions.shareOrDownload(imageUrl, `تصريح_${permitCode}.png`, {
-      title: `تصريح ${permitCode}`,
-      text: `صورة تصريح رقم ${permitCode}`,
+  // مشاركة مباشرة عبر زر المشاركة الأصلي بالجوال (يفتح قائمة واتساب بالصورة مرفقة ومعها كامل نص الرسالة كـ Caption)
+  const handleSharePermitImage = (imageUrl: string, permitCode: string) => {
+    const fullText = whatsAppModalOrder ? buildWhatsAppMessage(whatsAppModalOrder) : `تصريح رقم ${permitCode}`;
+    return imageActions.shareOrDownload(imageUrl, `تصريح_${permitCode}.png`, {
+      title: `تصريح زيارة الروضة الشريفة ${permitCode}`,
+      text: fullText,
+      downloadedMessage: 'تم تحميل صورة التصريح بنجاح — يمكنك إرفاقها في محادثة الواتساب.',
     });
+  };
 
   const handlePrintReceipt = async (order: SalesOrder) => {
     const opened = await printOrderReceipt(order, DataService.getCompanySettings());
@@ -1413,11 +1432,11 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                               <button
                                 type="button"
                                 onClick={() => handleSharePermitImage(p.imageUrl, p.permitCode)}
-                                className="px-2.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
-                                title="مشاركة الصورة مباشرة عبر واتساب (مشاركة الجوال)"
+                                className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition-all min-h-[36px]"
+                                title="إرسال صورة التصريح مع كامل نص الرسالة كـ Caption للواتساب (للجوال)"
                               >
                                 <Share2 className="w-3.5 h-3.5" />
-                                <span>إرسال</span>
+                                <span>إرسال الصورة + النص</span>
                               </button>
                               <button
                                 type="button"

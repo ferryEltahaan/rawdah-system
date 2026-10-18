@@ -294,15 +294,23 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
     }
 
     const companyName = DataService.getCompanySettings().companyNameAr;
-    const message = `السلام عليكم ورحمة الله وبركاته يا ${customer.fullName}،
+    let message = `السلام عليكم ورحمة الله وبركاته يا ${customer.fullName}،
 تم تجهيز تصريح زيارة الروضة الشريفة لكم بنجاح 🕌✨
 
 • رقم التصريح: ${permit.permitCode}
 • تاريخ الزيارة: ${permit.slotDate}
-• الفترة: ${permit.slotFormatted}
+• الفترة: ${permit.slotFormatted}`;
 
-تقبل الله زيارتكم وطاعتكم.
-${companyName}`;
+    if (permit.imageUrl && permit.imageUrl.startsWith('http')) {
+      message += `\n• رابط تحميل صورة التصريح: ${permit.imageUrl}`;
+    }
+
+    message += `\n\nتقبل الله زيارتكم وطاعتكم.\n${companyName}`;
+
+    // نسخ صورة التصريح تلقائياً للحافظة لمستخدمي الكمبيوتر ليتم لصقها بـ Ctrl + V
+    if (permit.imageUrl) {
+      imageActions.copyOrDownload(permit.imageUrl, `تصريح_${permit.permitCode}.png`);
+    }
 
     window.open(
       `https://wa.me/${customer.whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(message)}`,
