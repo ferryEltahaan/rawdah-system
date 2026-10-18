@@ -12,12 +12,26 @@ import {
 import { UserProfile } from '../types';
 import { DataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { verifyPassword } from '../utils/passwordHash';
+import { verifyPassword, hashPassword } from '../utils/passwordHash';
 import { CloudSetupModal } from './CloudSetupModal';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
 }
+
+// خريطة مطابقة ذكية بين الأسماء الإنجليزية والعربية
+const USERNAME_ALIASES: Record<string, string> = {
+  'farid': 'فريد',
+  'فريد': 'farid',
+  'basmala': 'بسمله',
+  'بسمله': 'basmala',
+  'menna': 'منه',
+  'منه': 'menna',
+  'rawdah': 'روضه',
+  'روضه': 'rawdah',
+  'sara': 'سارة',
+  'سارة': 'sara',
+};
 
 // مطابقة مرنة: إزالة أي بادئة أو لاحقة @ وتوحيد الصيغة
 const normUsername = (u: string) => 
@@ -60,22 +74,38 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // البحث في البروفايلات المسجلة بالنظام محلياً أولاً
-    const localProfile = DataService.getProfiles().find(
-      (p) => normUsername(p.username) === cleanUser
-    );
+    const alias = USERNAME_ALIASES[cleanUser];
+
+    // البحث في البروفايلات المسجلة بالنظام (مطابقة باسم المستخدم أو الاسم المعرّب أو الاسم الكامل)
+    const allProfiles = DataService.getProfiles();
+    const localProfile = allProfiles.find((p) => {
+      const u = normUsername(p.username);
+      const fn = normUsername(p.fullName);
+      return (
+        u === cleanUser || 
+        (alias && u === alias) || 
+        fn.includes(cleanUser) || 
+        (alias && fn.includes(alias))
+      );
+    });
 
     // ── 1. محاولة المصادقة السحابية عبر Supabase Auth أولاً ──
     let cloudAuthUser: any = null;
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: toAuthEmail(username),
-          password,
-        });
+        const emailsToTry = [toAuthEmail(username)];
+        if (alias) emailsToTry.push(toAuthEmail(alias));
 
-        if (!authError && authData?.user) {
-          cloudAuthUser = authData.user;
+        for (const email of emailsToTry) {
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (!authError && authData?.user) {
+            cloudAuthUser = authData.user;
+            break;
+          }
         }
       } catch (e) {
         console.warn('Supabase auth attempt:', e);
@@ -127,7 +157,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       }
     }
 
-    // ── 3. في حالة الموظفين المُنشئين من النظام (التحقق من كلمة المرور المشفرة محلياً) ──
+    // ── 3. في حالة الموظفين المُنشئين من النظام ──
     if (localProfile) {
       if (!localProfile.isActive) {
         setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
@@ -135,14 +165,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         return;
       }
 
+      let isMatch = false;
+
       if (!localProfile.password) {
-        setErrorMessage('هذا الحساب لا يحتوي على كلمة مرور محفوظة. تواصل مع الإدارة.');
-        setIsLoading(false);
-        return;
+        // إذا كان الحساب بدون كلمة مرور مسجلة سابقة، نعتمد كلمة المرور المدخلة ككلمة مرور الحساب فوراً
+        localProfile.password = await hashPassword(password);
+        await DataService.saveProfile(localProfile);
+        isMatch = true;
+      } else {
+        const { matches } = await verifyPassword(password, localProfile.password);
+        isMatch = matches || password === localProfile.password;
       }
 
-      const { matches } = await verifyPassword(password, localProfile.password);
-      if (matches) {
+      if (isMatch) {
         DataService.setCurrentUser(localProfile);
         localStorage.setItem('rawdah_session_logged_in', 'true');
         onLoginSuccess(localProfile);

@@ -17,6 +17,7 @@ import { DataService } from '../services/dataService';
 import { useToast } from './Toast';
 import { ImageUploadField } from './ImageUploadField';
 import { hashPassword } from '../utils/passwordHash';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 import confetti from 'canvas-confetti';
 
 const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, CustomPermissions> = {
@@ -316,6 +317,22 @@ export const EmployeesAndRolesView: React.FC = () => {
 
       // عند فشل الحفظ المحلي (امتلاء المساحة) نُبقي النموذج مفتوحاً لتعديل الصورة أو البيانات
       if (!localSaved) return;
+
+      // مزامنة الحساب في Supabase Auth إن كان متاحاً
+      if (isSupabaseConfigured && supabase && password) {
+        try {
+          await supabase.rpc('rpc_create_staff_user', {
+            p_username: username.trim(),
+            p_password: password,
+            p_full_name: fullName.trim(),
+            p_role: role,
+            p_phone: phoneNumber.trim(),
+            p_whatsapp: whatsappNumber.trim(),
+          });
+        } catch (rpcErr) {
+          console.warn('RPC create staff user warning:', rpcErr);
+        }
+      }
 
       if (existing && PERMISSION_LABELS.some(({ key }) => existing.customPermissions[key] !== finalPermissions[key])) {
         logPermissionChange(existing, finalPermissions, 'من نموذج إضافة/تعديل موظف');
