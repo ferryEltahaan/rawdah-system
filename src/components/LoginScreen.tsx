@@ -89,7 +89,45 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       );
     });
 
-    // ── 1. محاولة المصادقة السحابية عبر Supabase Auth أولاً ──
+    // ── 1. فحص المصادقة المباشر والسريع عبر قاعدة البيانات السحابية (RPC) ──
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('rpc_authenticate_user', {
+          p_username: username.trim(),
+          p_password: password,
+        });
+
+        if (!rpcErr && rpcRes && rpcRes.success && rpcRes.profile) {
+          const userProfile: UserProfile = {
+            id: rpcRes.profile.id,
+            fullName: rpcRes.profile.fullName,
+            username: rpcRes.profile.username,
+            phoneNumber: rpcRes.profile.phoneNumber || '',
+            whatsappNumber: rpcRes.profile.whatsappNumber || '',
+            role: rpcRes.profile.role,
+            isActive: rpcRes.profile.isActive ?? true,
+            avatarUrl: rpcRes.profile.avatarUrl || undefined,
+            customPermissions: rpcRes.profile.customPermissions || { view: true, create: true, edit: true, delete: false, reports: false },
+            createdAt: rpcRes.profile.createdAt || new Date().toISOString(),
+          };
+
+          DataService.setCurrentUser(userProfile);
+          localStorage.setItem('rawdah_session_logged_in', 'true');
+          await DataService.syncFromCloud().catch(() => {});
+          onLoginSuccess(userProfile);
+          setIsLoading(false);
+          return;
+        } else if (rpcRes && rpcRes.error === 'user_inactive') {
+          setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
+          setIsLoading(false);
+          return;
+        }
+      } catch (rpcEx) {
+        console.warn('RPC auth attempt warning:', rpcEx);
+      }
+    }
+
+    // ── 2. محاولة المصادقة السحابية عبر Supabase Auth ──
     let cloudAuthUser: any = null;
     if (isSupabaseConfigured && supabase) {
       try {

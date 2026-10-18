@@ -318,10 +318,10 @@ export const EmployeesAndRolesView: React.FC = () => {
       // عند فشل الحفظ المحلي (امتلاء المساحة) نُبقي النموذج مفتوحاً لتعديل الصورة أو البيانات
       if (!localSaved) return;
 
-      // مزامنة الحساب في Supabase Auth إن كان متاحاً
+      // مزامنة الحساب في Supabase إن كان متاحاً
       if (isSupabaseConfigured && supabase && password) {
         try {
-          await supabase.rpc('rpc_create_staff_user', {
+          await supabase.rpc('rpc_save_staff_user', {
             p_username: username.trim(),
             p_password: password,
             p_full_name: fullName.trim(),
@@ -330,7 +330,7 @@ export const EmployeesAndRolesView: React.FC = () => {
             p_whatsapp: whatsappNumber.trim(),
           });
         } catch (rpcErr) {
-          console.warn('RPC create staff user warning:', rpcErr);
+          console.warn('RPC save staff user warning:', rpcErr);
         }
       }
 
