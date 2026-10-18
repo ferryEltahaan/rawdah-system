@@ -397,8 +397,30 @@ export class DataService {
     this.migrateLocalProfileIds();
 
     try {
+      // جلب كل البيانات من السحابة بالتوازي (مرة واحدة بدل 8 طلبات متتالية)
+      const [
+        { data: settings },
+        { data: custs, error: custsErr },
+        { data: permList, error: permErr },
+        { data: orderList, error: orderErr },
+        { data: linkRows },
+        { data: smsList, error: smsErr },
+        { data: profileList },
+        { data: accList },
+        { data: logList },
+      ] = await Promise.all([
+        sb.from('company_settings').select('*').limit(1),
+        sb.from('customers').select('*').order('created_at', { ascending: false }),
+        sb.from('permits').select('*').order('created_at', { ascending: false }),
+        sb.from('sales_orders').select('*').order('created_at', { ascending: false }),
+        sb.from('order_permits').select('order_id, permit_id'),
+        sb.from('sms_messages').select('*').order('received_at', { ascending: false }).limit(200),
+        sb.from('profiles').select('*').order('created_at', { ascending: true }),
+        sb.from('financial_accounts').select('*').order('created_at', { ascending: true }),
+        sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500),
+      ]);
+
       // 1. Sync Company Settings
-      const { data: settings } = await sb.from('company_settings').select('*').limit(1);
       if (settings && settings.length > 0) {
         const s = settings[0];
         const mapped: CompanySettings = {
@@ -420,7 +442,6 @@ export class DataService {
       }
 
       // 2. Sync Customers
-      const { data: custs, error: custsErr } = await sb.from('customers').select('*').order('created_at', { ascending: false });
       if (!custsErr && custs !== null && custs !== undefined) {
         const mappedCusts: Customer[] = custs.map(c => ({
           id: c.id,
@@ -433,12 +454,12 @@ export class DataService {
           totalSpent: parseFloat(c.total_spent || '0'),
           createdAt: c.created_at,
         }));
-        
+
         // دمج ذكي: لا نمسح العملاء المحليين إطلاقاً إذا لم يكونوا قد وصلوا للسحابة بعد
         const localCusts = loadFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
         const custMap = new Map<string, Customer>();
         mappedCusts.forEach(c => custMap.set(c.id, c));
-        
+
         // الاحتفاظ بأي عميل تم تسجيله محلياً ولم يُجلب من السحابة، مع إعادة محاولة رفعه
         localCusts.forEach(lc => {
           if (!custMap.has(lc.id)) {
@@ -453,12 +474,11 @@ export class DataService {
             }, { onConflict: 'id' }).then(() => {}, () => {});
           }
         });
-        
+
         saveToStorage(STORAGE_KEYS.CUSTOMERS, Array.from(custMap.values()), true);
       }
 
       // 3. Sync Permits
-      const { data: permList, error: permErr } = await sb.from('permits').select('*').order('created_at', { ascending: false });
       if (!permErr && permList !== null && permList !== undefined) {
         const mappedPermits: Permit[] = permList.map(p => ({
           id: p.id,
@@ -482,25 +502,21 @@ export class DataService {
         const permMap = new Map<string, Permit>();
         mappedPermits.forEach(p => permMap.set(p.id, p));
         localPermits.forEach(lp => {
-          if (!permMap.has(lp.id)) {
-            permMap.set(lp.id, lp);
-          }
+          if (!permMap.has(lp.id)) permMap.set(lp.id, lp);
         });
 
         saveToStorage(STORAGE_KEYS.PERMITS, Array.from(permMap.values()), true);
       }
 
       // 4. Sync Orders
-      const { data: orderList, error: orderErr } = await sb.from('sales_orders').select('*').order('created_at', { ascending: false });
       if (!orderErr && orderList !== null && orderList !== undefined) {
         // جلب أسماء العملاء
         const customers = this.getCustomers();
         const custMap: Record<string, Customer> = {};
         customers.forEach(c => { custMap[c.id] = c; });
 
-        // روابط التصاريح بالطلبات من جدول الوصل order_permits
+        // روابط التصاريح بالطلبات من جدول الوصل order_permits (جُلب بالتوازي مسبقاً)
         const linksByOrder: Record<string, string[]> = {};
-        const { data: linkRows } = await sb.from('order_permits').select('order_id, permit_id');
         (linkRows || []).forEach(l => {
           if (!linksByOrder[l.order_id]) linksByOrder[l.order_id] = [];
           linksByOrder[l.order_id].push(l.permit_id);
@@ -547,16 +563,13 @@ export class DataService {
         const orderMap = new Map<string, SalesOrder>();
         mappedOrders.forEach(o => orderMap.set(o.id, o));
         localOrders.forEach(lo => {
-          if (!orderMap.has(lo.id)) {
-            orderMap.set(lo.id, lo);
-          }
+          if (!orderMap.has(lo.id)) orderMap.set(lo.id, lo);
         });
 
         saveToStorage(STORAGE_KEYS.ORDERS, Array.from(orderMap.values()));
       }
 
       // 5. Sync SMS Messages
-      const { data: smsList, error: smsErr } = await sb.from('sms_messages').select('*').order('received_at', { ascending: false }).limit(200);
       if (!smsErr && smsList !== null && smsList !== undefined) {
         const mappedSms: SmsMessage[] = smsList.map(s => ({
           id: s.id,
@@ -577,11 +590,10 @@ export class DataService {
       }
 
       // 6. Sync Profiles (لا نستبدل المحلي إلا إذا كانت السحابة تحتوي بيانات فعلية)
-      const { data: profileList } = await sb.from('profiles').select('*').order('created_at', { ascending: true });
       if (profileList && profileList.length > 0) {
         const storedProfiles = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
         const localPasswords: Record<string, string> = {};
-        storedProfiles.forEach(p => { 
+        storedProfiles.forEach(p => {
           if (p.password) {
             localPasswords[p.id] = p.password;
             if (p.username) localPasswords[p.username.toLowerCase().trim()] = p.password;
@@ -605,7 +617,6 @@ export class DataService {
           };
         });
 
-        // الموظفون المحليون غير الموجودين سحابياً (بالمعرّف أو باسم المستخدم) يُدمجون ولا يُمسحون عند المزامنة
         const cloudIds = new Set(profileList.map(p => p.id));
         const cloudUsernames = new Set(
           profileList.map(p => (p.username || '').toLowerCase()).filter(Boolean)
@@ -617,7 +628,7 @@ export class DataService {
         saveToStorage(STORAGE_KEYS.PROFILES, [...mappedProfiles, ...localOnlyProfiles]);
       }
 
-      // رفع الموظفين المحليين غير الموجودين سحابياً — بعد إسقاط قيد auth.users أصبح الإدراج في الجدول ممكناً
+      // رفع الموظفين المحليين غير الموجودين سحابياً
       const cloudProfileIds = new Set((profileList || []).map(p => p.id));
       const cloudProfileUsernames = new Set(
         (profileList || []).map(p => (p.username || '').toLowerCase()).filter(Boolean)
@@ -648,12 +659,11 @@ export class DataService {
           console.error('Cloud profile push exception:', e);
         }
       }
-      if (pushedProfilesCount > 0) {
+      if (pushedProfilesCount > 0 && import.meta.env.DEV) {
         console.log(`⬆️ Pushed ${pushedProfilesCount} local profiles to cloud`);
       }
 
       // 7. Sync Financial Accounts
-      const { data: accList } = await sb.from('financial_accounts').select('*').order('created_at', { ascending: true });
       if (accList !== null && accList !== undefined) {
         const localAccMap: Record<string, FinancialAccount> = {};
         this.getFinancialAccounts().forEach(a => { localAccMap[a.id] = a; });
@@ -675,8 +685,7 @@ export class DataService {
         if (mappedAccounts.length > 0) saveToStorage(STORAGE_KEYS.ACCOUNTS, mappedAccounts);
       }
 
-      // 8. Sync Audit Logs (آخر 500 سجل فقط — جدول السحابة لا يخزن اسم المستخدم، نسترجعه من الملفات)
-      const { data: logList } = await sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500);
+      // 8. Sync Audit Logs (آخر 500 سجل فقط)
       if (logList !== null && logList !== undefined) {
         const nameMap: Record<string, string> = {};
         this.getProfiles().forEach(p => { nameMap[p.id] = p.fullName; });
@@ -696,7 +705,6 @@ export class DataService {
           };
         });
 
-        // دمج اتحادي بدل الاستبدال: سجل أُنشئ لحظة تنفيذ المزامنة (أو لم تنجح مزامنته بعد) لا يُمسح محلياً
         const cloudIds = new Set(mappedLogs.map(l => l.id));
         const localOnlyLogs = this.getAuditLogs().filter(l => !cloudIds.has(l.id));
         const merged = [...localOnlyLogs, ...mappedLogs]
@@ -706,7 +714,7 @@ export class DataService {
       }
 
       touchLastSync();
-      console.log('✅ Supabase Cloud Data synchronized successfully!');
+      if (import.meta.env.DEV) console.log('✅ Supabase Cloud Data synchronized successfully!');
     } catch (e) {
       console.error('Failed to sync from cloud:', e);
     }
