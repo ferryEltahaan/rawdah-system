@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { DataService } from '../services/dataService';
-import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { supabase, isSupabaseConfigured, normUsername, toAuthEmail } from '../services/supabase';
 import { verifyPassword, hashPassword } from '../utils/passwordHash';
 import { CloudSetupModal } from './CloudSetupModal';
 
@@ -19,37 +19,7 @@ interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
 }
 
-// خريطة مطابقة ذكية بين الأسماء الإنجليزية والعربية
-const USERNAME_ALIASES: Record<string, string> = {
-  'farid': 'فريد',
-  'فريد': 'farid',
-  'basmala': 'بسمله',
-  'بسمله': 'basmala',
-  'menna': 'منه',
-  'منه': 'menna',
-  'rawdah': 'روضه',
-  'روضه': 'rawdah',
-  'sara': 'سارة',
-  'سارة': 'sara',
-};
-
-// مطابقة مرنة: إزالة أي بادئة أو لاحقة @ وتوحيد الصيغة
-const normUsername = (u: string) => 
-  (u || '')
-    .toLowerCase()
-    .trim()
-    .replace(/@rawdah\.app$/, '')
-    .replace(/^@+/, '')
-    .replace(/@+$/, '');
-
-const toAuthEmail = (u: string) => {
-  const v = (u || '').toLowerCase().trim();
-  if (v.includes('@') && !v.endsWith('@rawdah.app') && v.includes('.')) {
-    return v;
-  }
-  const clean = normUsername(v);
-  return `${clean}@rawdah.app`;
-};
+// normUsername و toAuthEmail مُستوردتان من supabase.ts — مصدر موحد واحد
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
@@ -74,19 +44,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    const alias = USERNAME_ALIASES[cleanUser];
-
-    // البحث في البروفايلات المسجلة بالنظام (مطابقة باسم المستخدم أو الاسم المعرّب أو الاسم الكامل)
+    // البحث في البروفايلات المسجلة بالنظام (مطابقة باسم المستخدم أو الاسم الكامل)
     const allProfiles = DataService.getProfiles();
     const localProfile = allProfiles.find((p) => {
       const u = normUsername(p.username);
       const fn = normUsername(p.fullName);
-      return (
-        u === cleanUser || 
-        (alias && u === alias) || 
-        fn.includes(cleanUser) || 
-        (alias && fn.includes(alias))
-      );
+      return u === cleanUser || fn.includes(cleanUser);
     });
 
     // ── 1. فحص المصادقة المباشر والسريع عبر قاعدة البيانات السحابية (RPC) ──
@@ -131,19 +94,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     let cloudAuthUser: any = null;
     if (isSupabaseConfigured && supabase) {
       try {
-        const emailsToTry = [toAuthEmail(username)];
-        if (alias) emailsToTry.push(toAuthEmail(alias));
-
-        for (const email of emailsToTry) {
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-
-          if (!authError && authData?.user) {
-            cloudAuthUser = authData.user;
-            break;
-          }
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: toAuthEmail(username),
+          password,
+        });
+        if (!authError && authData?.user) {
+          cloudAuthUser = authData.user;
         }
       } catch (e) {
         console.warn('Supabase auth attempt:', e);
@@ -211,8 +167,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         await DataService.saveProfile(localProfile);
         isMatch = true;
       } else {
+        // التحقق من كلمة المرور بالتشفير فقط — المقارنة الحرفية غير مسموحة أمنياً
         const { matches } = await verifyPassword(password, localProfile.password);
-        isMatch = matches || password === localProfile.password;
+        isMatch = matches;
       }
 
       if (isMatch) {
