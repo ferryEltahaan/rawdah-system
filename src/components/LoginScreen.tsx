@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
   Lock, 
@@ -9,7 +9,7 @@ import {
   EyeOff,
   CloudCog
 } from 'lucide-react';
-import { UserProfile } from '../types';
+import { UserProfile, CompanySettings } from '../types';
 import { DataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured, normUsername, toAuthEmail } from '../services/supabase';
 import { verifyPassword, hashPassword } from '../utils/passwordHash';
@@ -28,6 +28,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(DataService.getCompanySettings());
+
+  useEffect(() => {
+    DataService.syncCompanySettingsFromCloud().then(latest => {
+      setCompanySettings(latest);
+    });
+
+    const handleUpdate = () => {
+      setCompanySettings(DataService.getCompanySettings());
+    };
+
+    window.addEventListener('rawdah_storage_update', handleUpdate);
+    return () => window.removeEventListener('rawdah_storage_update', handleUpdate);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,16 +211,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         {/* Brand Header */}
         <div className="text-center space-y-3">
           <div className="inline-flex p-1 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-amber-500 shadow-md shadow-emerald-600/20">
-            <div className="bg-white p-3.5 rounded-[14px] shadow-inner">
-              <Building2 className="w-8 h-8 text-emerald-600" />
+            <div className="bg-white p-3.5 rounded-[14px] shadow-inner flex items-center justify-center min-w-[56px] min-h-[56px]">
+              {companySettings.logoUrl ? (
+                <img src={companySettings.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
+              ) : (
+                <Building2 className="w-8 h-8 text-emerald-600" />
+              )}
             </div>
           </div>
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-              منظومة تصاريح الروضة الشريفة
+              {companySettings.companyNameAr || 'منظومة تصاريح الروضة الشريفة'}
             </h1>
             <p className="text-xs text-slate-600 font-medium mt-1">
-              منصة إدارة الفترات الزمنية والمبيعات والسداد الفوري
+              {companySettings.companyNameEn || 'منصة إدارة الفترات الزمنية والمبيعات والسداد الفوري'}
             </p>
           </div>
         </div>

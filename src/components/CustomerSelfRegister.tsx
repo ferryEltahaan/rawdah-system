@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
   User, 
@@ -14,12 +14,20 @@ import {
   ExternalLink,
   Tag
 } from 'lucide-react';
+import { CompanySettings } from '../types';
 import { DataService } from '../services/dataService';
 import { validateWhatsappNumber } from '../utils/phoneValidation';
 import confetti from 'canvas-confetti';
 
 export const CustomerSelfRegister: React.FC = () => {
-  const company = DataService.getCompanySettings();
+  const [company, setCompany] = useState<CompanySettings>(DataService.getCompanySettings());
+
+  useEffect(() => {
+    DataService.syncCompanySettingsFromCloud().then(latest => setCompany(latest));
+    const handleUpdate = () => setCompany(DataService.getCompanySettings());
+    window.addEventListener('rawdah_storage_update', handleUpdate);
+    return () => window.removeEventListener('rawdah_storage_update', handleUpdate);
+  }, []);
 
   const [fullName, setFullName] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
@@ -112,8 +120,12 @@ export const CustomerSelfRegister: React.FC = () => {
         {/* Header Branding Card matching Login Screen */}
         <div className="text-center space-y-3">
           <div className="inline-flex p-1 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-amber-500 shadow-md shadow-emerald-600/20">
-            <div className="bg-white p-3.5 rounded-[14px] shadow-inner">
-              <Building2 className="w-8 h-8 text-emerald-600" />
+            <div className="bg-white p-3.5 rounded-[14px] shadow-inner flex items-center justify-center min-w-[56px] min-h-[56px]">
+              {company.logoUrl ? (
+                <img src={company.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
+              ) : (
+                <Building2 className="w-8 h-8 text-emerald-600" />
+              )}
             </div>
           </div>
           <div>

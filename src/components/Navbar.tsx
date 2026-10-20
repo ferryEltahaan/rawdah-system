@@ -43,10 +43,22 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [lastSync, setLastSync] = useState<string | null>(DataService.getLastCloudSync());
 
   useEffect(() => {
+    // جلب مباشر لأحدث إعدادات المؤسسة من السحابة فوراً
+    DataService.syncCompanySettingsFromCloud().then(latest => {
+      setCompanySettings(latest);
+      if (latest.companyNameAr) {
+        document.title = `${latest.companyNameAr} | نظام تصاريح الروضة`;
+      }
+    });
+
     // Listen for real-time company settings updates instantly
     const handleUpdate = () => {
-      setCompanySettings(DataService.getCompanySettings());
+      const current = DataService.getCompanySettings();
+      setCompanySettings(current);
       setLastSync(DataService.getLastCloudSync());
+      if (current.companyNameAr) {
+        document.title = `${current.companyNameAr} | نظام تصاريح الروضة`;
+      }
     };
     window.addEventListener('rawdah_storage_update', handleUpdate);
 
@@ -55,8 +67,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       setIsCloudActive(
         Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || (import.meta as any).env?.VITE_SUPABASE_URL)
       );
-      setCompanySettings(DataService.getCompanySettings());
+      const current = DataService.getCompanySettings();
+      setCompanySettings(current);
       setLastSync(DataService.getLastCloudSync());
+      if (current.companyNameAr) {
+        document.title = `${current.companyNameAr} | نظام تصاريح الروضة`;
+      }
     };
     window.addEventListener('rawdah_cloud_updated', handleCloudUpdate);
 
@@ -125,9 +141,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            <div className="w-9 h-9 md:w-10 md:h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
-              <div className="w-full h-full bg-emerald-900/90 rounded-[14px] flex items-center justify-center">
-                <Building2 className="w-4 h-4 md:w-5 md:h-5 text-emerald-100" />
+            <div className="w-9 h-9 md:w-10 md:h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+              <div className="w-full h-full bg-emerald-900/90 rounded-[14px] flex items-center justify-center overflow-hidden">
+                {companySettings.logoUrl ? (
+                  <img src={companySettings.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                ) : (
+                  <Building2 className="w-4 h-4 md:w-5 md:h-5 text-emerald-100" />
+                )}
               </div>
             </div>
             <div>

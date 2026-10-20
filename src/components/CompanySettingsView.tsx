@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building,
   Save,
@@ -33,6 +33,20 @@ export const CompanySettingsView: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSeedingScenario, setIsSeedingScenario] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
+
+  useEffect(() => {
+    // جلب مباشر من السحابة لضمان عرض أحدث بيانات المؤسسة
+    DataService.syncCompanySettingsFromCloud().then(latest => {
+      setSettings(latest);
+    });
+
+    const handleUpdate = () => {
+      setSettings(DataService.getCompanySettings());
+    };
+
+    window.addEventListener('rawdah_storage_update', handleUpdate);
+    return () => window.removeEventListener('rawdah_storage_update', handleUpdate);
+  }, []);
 
   const handleGenerateDemo = async () => {
     const ok = await toast.confirm(

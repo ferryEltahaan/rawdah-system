@@ -47,3 +47,5 @@ node_modules
 
 # Deploy copy (derived from root — never a source of truth)
 vercel_ready_files/
+
+.vercel

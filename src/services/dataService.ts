@@ -410,7 +410,7 @@ export class DataService {
         { data: accList },
         { data: logList },
       ] = await Promise.all([
-        sb.from('company_settings').select('*').limit(1),
+        sb.from('company_settings').select('*').order('updated_at', { ascending: false }).limit(1),
         sb.from('customers').select('*').order('created_at', { ascending: false }),
         sb.from('permits').select('*').order('created_at', { ascending: false }),
         sb.from('sales_orders').select('*').order('created_at', { ascending: false }),
@@ -1085,7 +1085,50 @@ export class DataService {
 
   // --- Company Settings ---
   static getCompanySettings(): CompanySettings {
-    return loadFromStorage(STORAGE_KEYS.SETTINGS, initialCompanySettings);
+    const s = loadFromStorage(STORAGE_KEYS.SETTINGS, initialCompanySettings);
+    if (typeof document !== 'undefined' && s.companyNameAr && !document.title.startsWith(s.companyNameAr)) {
+      document.title = `${s.companyNameAr} | نظام تصاريح الروضة`;
+    }
+    return s;
+  }
+
+  /** جلب مباشر وتحديث إعدادات المؤسسة من السحابة فوراً مع تحديث العنوان والشاشات */
+  static async syncCompanySettingsFromCloud(): Promise<CompanySettings> {
+    if (!getIsConfigured() || !getSupabase()) return this.getCompanySettings();
+    try {
+      const { data, error } = await getSupabase()!
+        .from('company_settings')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        const s = data[0];
+        const mapped: CompanySettings = {
+          id: s.id,
+          companyNameAr: s.company_name_ar || '',
+          companyNameEn: s.company_name_en || '',
+          address: s.address || '',
+          primaryPhone: s.primary_phone || '',
+          secondaryPhone: s.secondary_phone || '',
+          whatsappNumber: s.whatsapp_number || '',
+          email: s.email || '',
+          logoUrl: s.logo_url || '',
+          taxNumber: s.tax_number || '',
+          commercialRegistry: s.commercial_registry || '',
+          invoiceFooterNote: s.invoice_footer_note || '',
+          currency: s.currency || 'SAR',
+        };
+        saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
+        if (typeof document !== 'undefined' && mapped.companyNameAr) {
+          document.title = `${mapped.companyNameAr} | نظام تصاريح الروضة`;
+        }
+        return mapped;
+      }
+    } catch (e) {
+      console.warn('Direct company settings sync warning:', e);
+    }
+    return this.getCompanySettings();
   }
 
   /** آخر مرة وصلت فيها بيانات من السحابة (مزامنة يدوية أو حدث لحظي) */
