@@ -14,6 +14,27 @@ export function todayRiyadh(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 }
 
+/**
+ * التحقق مما إذا كانت الفترة الزمنية للتصريح قد انقضت بتوقيت مكة المكرمة (الرياض GMT+3)
+ * @param slotDate تاريخ الفترة YYYY-MM-DD
+ * @param slotHour ساعة الفترة 0..23
+ * @param slotMinute دقيقة الفترة 0, 20, 40
+ * @param graceMinutes فترة السماح بعد بدء الفترة بالدقائق (افتراضياً 20 دقيقة مدة الفترة)
+ */
+export function isSlotPast(
+  slotDate: string,
+  slotHour: number,
+  slotMinute: number,
+  graceMinutes = 20
+): boolean {
+  if (!slotDate) return false;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const slotStartTime = new Date(`${slotDate}T${pad(slotHour)}:${pad(slotMinute)}:00+03:00`).getTime();
+  if (isNaN(slotStartTime)) return false;
+  const slotEndTime = slotStartTime + graceMinutes * 60 * 1000;
+  return Date.now() > slotEndTime;
+}
+
 // أسماء العملاء تصل من نموذج تسجيل عام بدون مصادقة، فأي خلية تبدأ بأحد هذه
 // المحارف تتحول إلى صيغة تُنفَّذ في جهاز الموظف لحظة فتح الملف في إكسل
 const CSV_FORMULA_PREFIX = /^[=+\-@\t\r]/;

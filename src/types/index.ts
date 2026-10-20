@@ -83,7 +83,7 @@ export interface Customer {
   createdAt: string;
 }
 
-export type PermitStatus = 'available' | 'locked' | 'assigned' | 'returned' | 'cancelled';
+export type PermitStatus = 'available' | 'locked' | 'assigned' | 'returned' | 'cancelled' | 'expired';
 
 export interface Permit {
   id: string;
@@ -102,6 +102,8 @@ export interface Permit {
   lockedByUserId?: string;
   lockedAt?: string;
   notes?: string;
+  isArchived?: boolean; // هل تم تفريغه/أرشفته من شاشة العمل اليومية مع الاحتفاظ بسجلاته؟
+  archivedAt?: string;
   createdAt: string;
 }
 

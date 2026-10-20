@@ -18,7 +18,11 @@ import {
   Printer,
   Share2,
   ArrowRightLeft,
-  CloudUpload
+  CloudUpload,
+  Archive,
+  FileText,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 import { Permit, PermitStatus, Customer, UserProfile, SalesOrder } from '../types';
 import { DataService } from '../services/dataService';
@@ -27,6 +31,7 @@ import { useToast } from './Toast';
 import { printPermit } from '../utils/printHelpers';
 import { compressImageFile, validateImageFile } from '../utils/imageHelpers';
 import { useImageActions } from '../hooks/useImageActions';
+import { isSlotPast, downloadCsv } from '../utils/csvHelpers';
 import confetti from 'canvas-confetti';
 
 interface PermitsInventoryProps {
@@ -40,6 +45,7 @@ const PERMIT_STATUS_LABELS: Record<PermitStatus, string> = {
   locked: 'مقفل مؤقتاً',
   returned: 'مُرجع للمخزون',
   cancelled: 'ملغي',
+  expired: 'منتهي الصلاحية',
 };
 
 const PERMIT_STATUS_BADGES: Record<PermitStatus, string> = {
@@ -48,15 +54,17 @@ const PERMIT_STATUS_BADGES: Record<PermitStatus, string> = {
   locked: 'bg-amber-500 text-white',
   returned: 'bg-slate-500 text-white',
   cancelled: 'bg-red-600 text-white',
+  expired: 'bg-rose-700 text-white',
 };
 
-// كل الحالات الخمس تُعد صراحةً حتى تكون الأجزاء المعروضة مساوية لإجمالي التصاريح
+// كل الحالات الست تُعد صراحةً حتى تكون الأجزاء المعروضة مساوية لإجمالي التصاريح
 const countPermitStatuses = (list: Permit[]) => ({
   available: list.filter(p => p.status === 'available').length,
   assigned: list.filter(p => p.status === 'assigned').length,
   locked: list.filter(p => p.status === 'locked').length,
   returned: list.filter(p => p.status === 'returned').length,
   cancelled: list.filter(p => p.status === 'cancelled').length,
+  expired: list.filter(p => p.status === 'expired').length,
 });
 
 export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser }) => {
@@ -100,12 +108,74 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
   const [isMoving, setIsMoving] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
 
+  // Period Expiry, Archive & Reports States
+  const [showArchived, setShowArchived] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
+  const [reportDateFilter, setReportDateFilter] = useState<string>(today);
+  const [isArchiving, setIsArchiving] = useState(false);
+
   const base64Count = permits.filter(p => p.imageUrl && p.imageUrl.startsWith('data:')).length;
 
   const refreshData = () => {
+    DataService.autoExpirePermits();
     setPermits(DataService.getPermits());
     setCustomers(DataService.getCustomers());
     setOrders(DataService.getOrders());
+  };
+
+  const handleArchivePast = async () => {
+    const ok = await toast.confirm(
+      'هل تريد تفريغ وأرشفة الفترات السابقة المنتهية؟\nسيتم إخفاؤها من جدول الـ 24 ساعة اليومي لتنظيف الشاشة، مع الحفظ الكامل لسجلاتها وبياناتها في تقارير الفترات دون حذف أي تصريح.',
+      { title: 'أرشفة وتفريغ الفترات المنتهية', confirmLabel: 'نعم، أرشف الفترات المنتهية' }
+    );
+    if (!ok) return;
+
+    setIsArchiving(true);
+    const res = await DataService.archivePastPermits(selectedDate);
+    setIsArchiving(false);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleExportReportsCsv = () => {
+    const reports = DataService.getPermitPeriodReports();
+    const filtered = reportDateFilter === 'all' 
+      ? reports 
+      : reports.filter(r => r.slotDate === reportDateFilter);
+    
+    if (filtered.length === 0) {
+      toast.error('لا توجد بيانات فترات متاحة للتصدير في هذا التاريخ.');
+      return;
+    }
+
+    const headers = [
+      'التاريخ',
+      'الفترة الزمنية',
+      'إجمالي المرفوع',
+      'المخصص للعملاء (مستغل)',
+      'منتهي دون استخدام (هدر)',
+      'المتاح حالياً',
+      'نسبة الاستغلال %',
+      'حالة الفترة',
+    ];
+
+    const rows = filtered.map(r => [
+      r.slotDate,
+      r.slotFormatted,
+      r.total,
+      r.assigned,
+      r.expired,
+      r.available,
+      `${r.utilizationRate}%`,
+      r.isPast ? 'فترة منتهية سابقة' : 'فترة حالية / قادمة',
+    ]);
+
+    downloadCsv(`تقرير_فترات_الروضة_${reportDateFilter || 'شامل'}.csv`, headers, rows);
+    toast.success('تم تصدير تقرير الفترات إلى ملف CSV بنجاح.');
   };
 
   const handleMigrateToCloud = async () => {
@@ -130,6 +200,8 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
   };
 
   useEffect(() => {
+    // فحص الصلاحية وتحديث الحالات المنتهية تلقائياً
+    DataService.autoExpirePermits();
     window.addEventListener('rawdah_storage_update', refreshData);
 
     // رفع تلقائي لأي تصاريح قديمة غير مرفوعة للسحابة عند فتح الشاشة
@@ -183,21 +255,23 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const minutes: (0 | 20 | 40)[] = [0, 20, 40];
 
+  const visiblePermits = permits.filter(p => showArchived || !p.isArchived);
+
   const getSlotStats = (hour: number, min: 0 | 20 | 40) => {
-    const slotPermits = permits.filter(
+    const slotPermits = visiblePermits.filter(
       p => p.slotDate === selectedDate && p.slotHour === hour && p.slotMinute === min
     );
     return { total: slotPermits.length, ...countPermitStatuses(slotPermits) };
   };
 
   const getHourStats = (hour: number) => {
-    const hourPermits = permits.filter(
+    const hourPermits = visiblePermits.filter(
       p => p.slotDate === selectedDate && p.slotHour === hour
     );
     return { total: hourPermits.length, ...countPermitStatuses(hourPermits) };
   };
 
-  const currentSlotPermits = permits.filter(
+  const currentSlotPermits = visiblePermits.filter(
     p => p.slotDate === selectedDate && p.slotHour === selectedHour && p.slotMinute === selectedMinute
   );
   const currentSlotStatuses = countPermitStatuses(currentSlotPermits);
@@ -425,8 +499,47 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
             title="تفريغ سجلات الفحص والبيانات المؤقتة القديمة لتحرير مساحة الهاتف فوراً"
           >
             <HardDrive className="w-4 h-4 text-amber-600" />
-            <span>تفريغ وضغط الذاكرة</span>
+            <span>تفريغ الذاكرة</span>
           </button>
+
+          {/* Archive Past Slots Button */}
+          <button
+            onClick={handleArchivePast}
+            disabled={isArchiving}
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold px-3.5 py-2.5 rounded-2xl text-xs transition-all shadow-sm"
+            title="تفريغ وأرشفة الفترات المنتهية السابقة من جدول الفترات اليومي مع الاحتفاظ بسجلاتها وتقاريرها"
+          >
+            <Archive className={`w-4 h-4 text-slate-600 ${isArchiving ? 'animate-spin' : ''}`} />
+            <span>{isArchiving ? 'جاري الأرشفة...' : 'أرشفة الفترات المنتهية'}</span>
+          </button>
+
+          {/* Period Reports & Analytics Button */}
+          <button
+            onClick={() => {
+              setReportDateFilter(selectedDate);
+              setShowReportsModal(true);
+            }}
+            className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold px-3.5 py-2.5 rounded-2xl text-xs transition-all shadow-sm"
+            title="عرض تقرير استغلال وهدر الفترات الزمنية السابقة والنشطة مع إمكانية التصدير"
+          >
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <span>تقرير الفترات والأرشيف</span>
+          </button>
+
+          {/* Toggle Show Archived */}
+          {permits.some(p => p.isArchived) && (
+            <button
+              onClick={() => setShowArchived(prev => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold border transition-all ${
+                showArchived
+                  ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-inner'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+              title="إظهار أو إخفاء التصاريح المؤرشفة"
+            >
+              <span>{showArchived ? 'إخفاء المؤرشف' : `عرض المؤرشف (${permits.filter(p => p.isArchived).length})`}</span>
+            </button>
+          )}
 
           {/* Cloud Migrate Button */}
           {base64Count > 0 && (
@@ -663,7 +776,9 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {currentSlotPermits.map(permit => {
-              const isAvailable = permit.status === 'available';
+              const isPast = isSlotPast(permit.slotDate, permit.slotHour, permit.slotMinute);
+              const isExpired = permit.status === 'expired' || (permit.status === 'available' && isPast);
+              const isAvailable = permit.status === 'available' && !isPast;
 
               return (
                 <div
@@ -671,6 +786,8 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
                   className={`rounded-2xl border p-3.5 space-y-3 transition-all ${
                     isAvailable
                       ? 'bg-white border-emerald-300 hover:border-emerald-500 shadow-sm hover:shadow-md'
+                      : isExpired
+                      ? 'bg-rose-50/40 border-rose-200'
                       : 'bg-slate-50 border-slate-200'
                   }`}
                 >
@@ -690,9 +807,18 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
                         <span>معاينة</span>
                       </button>
                       
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${PERMIT_STATUS_BADGES[permit.status]}`}>
-                        {PERMIT_STATUS_LABELS[permit.status]}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {permit.isArchived && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-white shadow-sm">
+                            مؤرشف
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          isExpired ? 'bg-rose-700 text-white' : PERMIT_STATUS_BADGES[permit.status]
+                        }`}>
+                          {isExpired ? 'منتهي الصلاحية' : PERMIT_STATUS_LABELS[permit.status]}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -706,14 +832,48 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
                     {permit.status === 'assigned' && (
                       <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-600">
                         <div className="font-bold text-blue-700 truncate">العميل: {permit.assignedCustomerName}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">بواسطة: {permit.assignedByUserName}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center justify-between">
+                          <span>بواسطة: {permit.assignedByUserName}</span>
+                          {isPast && <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">تم التنفيذ</span>}
+                        </div>
                       </div>
                     )}
                   </div>
 
                   {/* Action Buttons */}
                   <div className="pt-1">
-                    {isAvailable ? (
+                    {isExpired ? (
+                      <div className="space-y-1.5">
+                        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-bold py-1.5 px-2 rounded-xl text-center flex items-center justify-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>فترة منتهية (موقوف عن السحب)</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {canMove && (
+                            <button
+                              id={`move-permit-btn-${permit.id}`}
+                              onClick={() => openMoveModal([permit.id])}
+                              className="py-2 px-2 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 font-bold text-[11px] flex items-center justify-center gap-1 transition-all shadow-sm"
+                              title="إعادة توجيه ونقل التصريح لفترة قادمة نشطة"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                              <span>نقل لفترة قادمة</span>
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              id={`delete-permit-btn-${permit.id}`}
+                              onClick={() => handleDeletePermit(permit)}
+                              className="py-2 px-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-all shadow-sm"
+                              title="حذف هذا التصريح نهائياً"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>حذف</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : isAvailable ? (
                       <div className="space-y-1.5">
                         {canClaim ? (
                           <button
@@ -1424,6 +1584,167 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
                 {isMoving ? 'جاري النقل...' : `تأكيد النقل (${Math.min(moveQuantity, movePermitIds.length)} تصريح)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PERIOD REPORTS & ARCHIVE MODAL */}
+      {showReportsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-4xl w-full max-h-[90vh] flex flex-col space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-indigo-700">
+                <FileText className="w-5 h-5" />
+                <h3 className="text-base font-bold text-slate-900">تقرير فترات التصاريح ونسب الاستغلال والأرشيف</h3>
+              </div>
+              <button 
+                onClick={() => setShowReportsModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Filter & Export Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+              <div className="flex items-center gap-2 text-xs">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                <span className="font-bold text-slate-700">تصفية التاريخ:</span>
+                <select
+                  value={reportDateFilter}
+                  onChange={e => setReportDateFilter(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="all">جميع التواريخ (شامل الأرشيف)</option>
+                  {Array.from(new Set(permits.map(p => p.slotDate))).sort().reverse().map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportReportsCsv}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs shadow-sm transition-all"
+                  title="تنزيل التقرير بصيغة ملف إكسل CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>تصدير إكسل (CSV)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Aggregated KPI Summary */}
+            {(() => {
+              const allReports = DataService.getPermitPeriodReports();
+              const filtered = reportDateFilter === 'all' 
+                ? allReports 
+                : allReports.filter(r => r.slotDate === reportDateFilter);
+              
+              const totalUploaded = filtered.reduce((acc, r) => acc + r.total, 0);
+              const totalAssigned = filtered.reduce((acc, r) => acc + r.assigned, 0);
+              const totalExpired = filtered.reduce((acc, r) => acc + r.expired, 0);
+              const totalAvailable = filtered.reduce((acc, r) => acc + r.available, 0);
+              const overallUtil = totalUploaded > 0 ? Math.round((totalAssigned / totalUploaded) * 100) : 0;
+
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center">
+                      <div className="text-[11px] font-bold text-slate-500">إجمالي المرفوع</div>
+                      <div className="text-xl font-black text-slate-900 mt-0.5">{totalUploaded}</div>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
+                      <div className="text-[11px] font-bold text-blue-700">مخصص / مستخدم</div>
+                      <div className="text-xl font-black text-blue-900 mt-0.5">{totalAssigned}</div>
+                    </div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 text-center">
+                      <div className="text-[11px] font-bold text-rose-700">فائض منتهي (هدر)</div>
+                      <div className="text-xl font-black text-rose-900 mt-0.5">{totalExpired}</div>
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
+                      <div className="text-[11px] font-bold text-emerald-700">متاح حالياً</div>
+                      <div className="text-xl font-black text-emerald-900 mt-0.5">{totalAvailable}</div>
+                    </div>
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 text-center col-span-2 sm:col-span-1">
+                      <div className="text-[11px] font-bold text-indigo-700">نسبة الاستغلال</div>
+                      <div className="text-xl font-black text-indigo-900 mt-0.5">{overallUtil}%</div>
+                    </div>
+                  </div>
+
+                  {/* Scrollable Table */}
+                  <div className="flex-1 overflow-y-auto border border-slate-200 rounded-2xl min-h-[220px]">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-100 text-slate-700 sticky top-0 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="p-3">الفترة والوقت</th>
+                          <th className="p-3">التاريخ</th>
+                          <th className="p-3 text-center">المرفوع</th>
+                          <th className="p-3 text-center text-blue-700">مخصص</th>
+                          <th className="p-3 text-center text-rose-700">فائض منتهي</th>
+                          <th className="p-3 text-center text-emerald-700">متاح</th>
+                          <th className="p-3 text-center">نسبة الاستغلال</th>
+                          <th className="p-3 text-center">الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filtered.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-8 text-center text-slate-400">
+                              لا توجد فترات مسجلة في هذا التاريخ
+                            </td>
+                          </tr>
+                        ) : (
+                          filtered.map((r, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 font-mono font-bold text-slate-900">{r.slotFormatted}</td>
+                              <td className="p-3 text-slate-600 font-mono">{r.slotDate}</td>
+                              <td className="p-3 text-center font-bold">{r.total}</td>
+                              <td className="p-3 text-center font-bold text-blue-700">{r.assigned}</td>
+                              <td className="p-3 text-center font-bold text-rose-700">{r.expired}</td>
+                              <td className="p-3 text-center font-bold text-emerald-700">{r.available}</td>
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-1.5 font-bold">
+                                  <span>{r.utilizationRate}%</span>
+                                  <div className="w-12 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                    <div 
+                                      className={`h-full ${r.utilizationRate > 70 ? 'bg-emerald-500' : r.utilizationRate > 30 ? 'bg-amber-500' : 'bg-rose-500'}`} 
+                                      style={{ width: `${r.utilizationRate}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  r.isPast ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800'
+                                }`}>
+                                  {r.isPast ? 'فترة سابقة' : 'فترة نشطة'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-[11px] text-slate-400 font-medium">
+                💡 التقرير يحافظ على كافة الفترات السابقة والمؤرشفة لدقة المراجعة المالية والمخزنية.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowReportsModal(false)}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+              >
+                إغلاق
               </button>
             </div>
           </div>

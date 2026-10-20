@@ -23,6 +23,7 @@ import {
 import { buildDemoDataset, buildDailyPaymentScenario, DailyScenarioTexts } from './demoData';
 import { accountCurrency, currencySymbol, getOrderCurrency, providerCurrency } from '../utils/currency';
 import { hashPassword, verifyPassword } from '../utils/passwordHash';
+import { isSlotPast } from '../utils/csvHelpers';
 // نستورد المتغيرات مباشرة حتى نحصل على آخر قيمة (بعد reinitSupabase)
 import * as SupabaseModule from './supabase';
 
@@ -1684,6 +1685,16 @@ export class DataService {
       return { success: false, message: 'عذراً، هذا التصريح تم حجزه بالفعل من موظف آخر لحظياً' };
     }
 
+    // قيد الصلاحية الزمنية: يمنع سحب أي تصريح انتهت فترته الزمنية
+    if (isSlotPast(permit.slotDate, permit.slotHour, permit.slotMinute)) {
+      permits[permitIndex].status = 'expired';
+      saveToStorage(STORAGE_KEYS.PERMITS, permits);
+      return {
+        success: false,
+        message: `عذراً، انتهت الفترة الزمنية لهذا التصريح (${permit.slotDate} الساعة ${permit.slotFormatted}) ولا يمكن تخصيصه لعميل جديد.`
+      };
+    }
+
     const customer = this.getCustomers().find(c => c.id === customerId);
     if (!customer) {
       return { success: false, message: 'العميل المحدد غير موجود' };
@@ -2046,6 +2057,173 @@ export class DataService {
     const freedKb = Math.max(0, Math.round((initialBytes - afterRaw.length) / 1024));
 
     return { freedKb, permitsCount: permits.length };
+  }
+
+  // ─── فحص الصلاحية اللحظية وأرشفة وتفريغ الفترات المنتهية ───────────────────
+  
+  /** فحص المخزون وتحديث حالة التصاريح المتاحة التي انقضت فترتها تلقائياً إلى expired دون حذفها */
+  static autoExpirePermits(): number {
+    const permits = this.getPermits();
+    let count = 0;
+    const updated = permits.map(p => {
+      if (p.status === 'available' && isSlotPast(p.slotDate, p.slotHour, p.slotMinute)) {
+        count++;
+        return { ...p, status: 'expired' as const };
+      }
+      return p;
+    });
+
+    if (count > 0) {
+      saveToStorage(STORAGE_KEYS.PERMITS, updated);
+      if (getIsConfigured() && getSupabase()) {
+        const expiredIds = updated.filter(p => p.status === 'expired').map(p => p.id);
+        Promise.resolve(getSupabase()!.from('permits').update({ status: 'expired' }).in('id', expiredIds)).catch(() => {});
+      }
+    }
+    return count;
+  }
+
+  /** أرشفة وتفريغ الفترات السابقة من شبكة العمل المباشرة مع الاحتفاظ الكامل ببياناتها وتقاريرها */
+  static async archivePastPermits(targetDate?: string): Promise<{
+    success: boolean;
+    message: string;
+    archivedCount: number;
+    usedCount: number;
+    wastedCount: number;
+  }> {
+    const permits = this.getPermits();
+    const now = new Date().toISOString();
+    let archivedCount = 0;
+    let usedCount = 0;
+    let wastedCount = 0;
+    const archivedIds: string[] = [];
+
+    const updated = permits.map(p => {
+      const isPast = isSlotPast(p.slotDate, p.slotHour, p.slotMinute);
+      const matchesDate = targetDate ? p.slotDate === targetDate : true;
+
+      if (!p.isArchived && isPast && matchesDate) {
+        archivedCount++;
+        archivedIds.push(p.id);
+
+        if (p.status === 'assigned') {
+          usedCount++;
+        } else {
+          wastedCount++;
+          // إذا لم يُستخدم وانتهت فترته يصبح expired
+          p.status = 'expired';
+        }
+
+        return { ...p, isArchived: true, archivedAt: now };
+      }
+      return p;
+    });
+
+    if (archivedCount === 0) {
+      return {
+        success: true,
+        message: 'لا توجد فترات سابقة منتهية بحاجة للتفريغ أو الأرشفة حالياً.',
+        archivedCount: 0,
+        usedCount: 0,
+        wastedCount: 0,
+      };
+    }
+
+    saveToStorage(STORAGE_KEYS.PERMITS, updated);
+
+    // توثيق في سجل العمليات والتدقيق الأمني
+    const currentUser = this.getCurrentUser();
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'ARCHIVE_PERMITS' as any, 'permits', archivedIds[0], {
+      archivedCount,
+      usedCount,
+      wastedCount,
+      targetDate: targetDate || 'all_past',
+    });
+
+    // تحديث سحابي
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!
+          .from('permits')
+          .update({ is_archived: true, archived_at: now })
+          .in('id', archivedIds);
+      } catch (err) {
+        console.warn('Permits cloud archive warning:', err);
+      }
+    }
+
+    return {
+      success: true,
+      message: `تم تفريغ وأرشفة ${archivedCount} تصريح من الفترات السابقة بنجاح (المستخدم: ${usedCount} | الفائض المنتهي: ${wastedCount}).`,
+      archivedCount,
+      usedCount,
+      wastedCount,
+    };
+  }
+
+  /** استخراج تقرير تحليلي شامل لكل فترة زمنية: إجمالي المرفوع، المستخدم، الهدر الفائض، ونسبة الاستغلال */
+  static getPermitPeriodReports(): Array<{
+    slotDate: string;
+    slotHour: number;
+    slotMinute: number;
+    slotFormatted: string;
+    total: number;
+    assigned: number;
+    expired: number;
+    available: number;
+    utilizationRate: number;
+    isPast: boolean;
+  }> {
+    const permits = this.getPermits();
+    const map = new Map<string, {
+      slotDate: string;
+      slotHour: number;
+      slotMinute: number;
+      slotFormatted: string;
+      total: number;
+      assigned: number;
+      expired: number;
+      available: number;
+    }>();
+
+    for (const p of permits) {
+      const key = `${p.slotDate}_${p.slotHour}_${p.slotMinute}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          slotDate: p.slotDate,
+          slotHour: p.slotHour,
+          slotMinute: p.slotMinute,
+          slotFormatted: p.slotFormatted,
+          total: 0,
+          assigned: 0,
+          expired: 0,
+          available: 0,
+        });
+      }
+      const entry = map.get(key)!;
+      entry.total++;
+      if (p.status === 'assigned') entry.assigned++;
+      else if (p.status === 'expired') entry.expired++;
+      else if (p.status === 'available') {
+        if (isSlotPast(p.slotDate, p.slotHour, p.slotMinute)) {
+          entry.expired++;
+        } else {
+          entry.available++;
+        }
+      }
+    }
+
+    return Array.from(map.values())
+      .map(e => ({
+        ...e,
+        isPast: isSlotPast(e.slotDate, e.slotHour, e.slotMinute),
+        utilizationRate: e.total > 0 ? Math.round((e.assigned / e.total) * 100) : 0,
+      }))
+      .sort((a, b) => {
+        if (a.slotDate !== b.slotDate) return b.slotDate.localeCompare(a.slotDate);
+        if (a.slotHour !== b.slotHour) return b.slotHour - a.slotHour;
+        return b.slotMinute - a.slotMinute;
+      });
   }
 
   // ─── نقل / إعادة توزيع تصاريح بين الفترات ───────────────────────────────
