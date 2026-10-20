@@ -101,3 +101,13 @@ DROP POLICY IF EXISTS "allow all company_settings" ON public.company_settings;
 CREATE POLICY "allow all company_settings" ON public.company_settings 
   FOR ALL TO anon, authenticated 
   USING (true) WITH CHECK (true);
+
+-- 10. منح صلاحيات Data API الصريحة (متوافقة مع سياسة Supabase الجديدة 30 أكتوبر)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;

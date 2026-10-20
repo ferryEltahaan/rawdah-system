@@ -455,6 +455,23 @@ BEGIN
     END LOOP;
 END $$;
 
+-- 6.2.1 منح صلاحيات Data API الصريحة (متوافقة مع سياسة Supabase الجديدة 30 أكتوبر)
+-- يضمن وصول supabase-js و PostgREST للجداول دائماً دون خطأ permission denied
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+
+-- إعطاء صلاحية الإدراج لـ anon لتمكين تسجيل العملاء الذاتي عبر رابط الواتساب (?register=true)
+GRANT INSERT ON public.customers TO anon;
+GRANT INSERT ON public.audit_logs TO anon;
+
+-- منح الصلاحيات تلقائياً لأي جداول جديدة تُنشأ مستقبلاً في public
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
+
 -- 6.3 ملء الصلاحيات الفارغة ثم قفل العمود NOT NULL — حتى يعمل فحص
 --     تجميد الصلاحيات في سياسة التحديث الذاتي بشكل موثوق (NULL ≠ الافتراضي)
 UPDATE public.profiles
