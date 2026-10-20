@@ -81,14 +81,27 @@ export const EmployeesAndRolesView: React.FC = () => {
   const [draftPermissions, setDraftPermissions] = useState<CustomPermissions | null>(null);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
-  // Matrix inline editing
   const [savingPermissionKey, setSavingPermissionKey] = useState<string | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
   const refreshData = () => {
     setProfiles(DataService.getProfiles());
   };
 
+  const syncWithCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      await DataService.syncFromCloud();
+      setProfiles(DataService.getProfiles());
+    } catch (e) {
+      console.warn('Cloud profiles sync error:', e);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
   useEffect(() => {
+    syncWithCloud();
     window.addEventListener('rawdah_storage_update', refreshData);
     return () => window.removeEventListener('rawdah_storage_update', refreshData);
   }, []);
@@ -367,17 +380,30 @@ export const EmployeesAndRolesView: React.FC = () => {
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <UserCog className="w-5 h-5 text-emerald-600" />
             <span>الموظفون والأدوار ومصفوفة الصلاحيات</span>
+            <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
+              {profiles.length} موظف
+            </span>
           </h2>
           <p className="text-xs text-slate-600 mt-1">
             إدارة حسابات فريق العمل، ربط الصلاحيات حسب الدور الوظيفي، وضبط إمكانية الوصول.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <div className="text-xs font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full flex items-center gap-1.5 font-bold">
             <Lock className="w-3.5 h-3.5 text-emerald-600" />
             <span>تشفير ومصادقة عبر Supabase Auth</span>
           </div>
+
+          <button
+            onClick={syncWithCloud}
+            disabled={isSyncingCloud}
+            title="مزامنة وتحديث قائمة الموظفين مباشرة من السحابة"
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-2 rounded-2xl text-xs transition-all disabled:opacity-60 border border-slate-200"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin text-emerald-600' : ''}`} />
+            <span>{isSyncingCloud ? 'جارِ التحديث...' : 'تحديث من السحابة'}</span>
+          </button>
 
           <button
             onClick={handleOpenCreate}

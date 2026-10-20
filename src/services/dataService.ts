@@ -618,50 +618,29 @@ export class DataService {
           };
         });
 
-        const cloudIds = new Set(profileList.map(p => p.id));
-        const cloudUsernames = new Set(
-          profileList.map(p => (p.username || '').toLowerCase()).filter(Boolean)
-        );
-        const localOnlyProfiles = storedProfiles.filter(p =>
-          !cloudIds.has(p.id) && !(p.username && cloudUsernames.has(p.username.toLowerCase()))
-        );
-
-        saveToStorage(STORAGE_KEYS.PROFILES, [...mappedProfiles, ...localOnlyProfiles]);
-      }
-
-      // رفع الموظفين المحليين غير الموجودين سحابياً
-      const cloudProfileIds = new Set((profileList || []).map(p => p.id));
-      const cloudProfileUsernames = new Set(
-        (profileList || []).map(p => (p.username || '').toLowerCase()).filter(Boolean)
-      );
-      const missingProfilesOnCloud = this.getProfiles().filter(p =>
-        !cloudProfileIds.has(p.id) && !(p.username && cloudProfileUsernames.has(p.username.toLowerCase()))
-      );
-      let pushedProfilesCount = 0;
-      for (const p of missingProfilesOnCloud) {
-        try {
-          const { error: pushError } = await sb.from('profiles').upsert({
-            id: p.id,
-            full_name: p.fullName,
-            username: p.username || null,
-            phone_number: p.phoneNumber || null,
-            whatsapp_number: p.whatsappNumber || null,
-            role: p.role,
-            is_active: p.isActive,
-            avatar_url: p.avatarUrl || null,
-            custom_permissions: p.customPermissions,
-          }, { onConflict: 'id' });
-          if (pushError) {
-            console.error('Cloud profile push error:', pushError);
-          } else {
-            pushedProfilesCount += 1;
+        // السحابة هي المصدر الرسمي والنهائي للموظفين — نستبدل القائمة المحلية بما هو موجود في السحابة
+        // لمنع أي جهاز يحتفظ بكاش قديم من إعادة إحياء حسابات تجريبية أو مكررة
+        saveToStorage(STORAGE_KEYS.PROFILES, mappedProfiles);
+      } else if (profileList && profileList.length === 0) {
+        // في حالة استثنائية فقط (جدول سحابي فارغ تماماً عند أول تدشين للنظام): نرفع الحسابات المحلية
+        const localProfiles = this.getProfiles();
+        for (const p of localProfiles) {
+          try {
+            await sb.from('profiles').upsert({
+              id: p.id,
+              full_name: p.fullName,
+              username: p.username || null,
+              phone_number: p.phoneNumber || null,
+              whatsapp_number: p.whatsappNumber || null,
+              role: p.role,
+              is_active: p.isActive,
+              avatar_url: p.avatarUrl || null,
+              custom_permissions: p.customPermissions,
+            }, { onConflict: 'id' });
+          } catch (e) {
+            console.error('Initial cloud profile push exception:', e);
           }
-        } catch (e) {
-          console.error('Cloud profile push exception:', e);
         }
-      }
-      if (pushedProfilesCount > 0 && import.meta.env.DEV) {
-        console.log(`⬆️ Pushed ${pushedProfilesCount} local profiles to cloud`);
       }
 
       // 7. Sync Financial Accounts
