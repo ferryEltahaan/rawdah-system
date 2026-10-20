@@ -74,13 +74,24 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerList, setShowCustomerList] = useState(false);
   const [newOrderType, setNewOrderType] = useState<OrderType>('instant');
-  const [newUnitPrice, setNewUnitPrice] = useState(150);
+  const [newUnitPrice, setNewUnitPrice] = useState(() => {
+    return DataService.getCompanySettings().defaultPermitPrice ?? 150;
+  });
   const [newPaidAmount, setNewPaidAmount] = useState(0);
   const [newNotes, setNewNotes] = useState('');
   const [newCurrency, setNewCurrency] = useState<CurrencyCode>(() => {
     const c = DataService.getCompanySettings().currency;
     return c === 'EGP' ? 'EGP' : 'SAR';
   });
+
+  // تحديث السعر الافتراضي والعملة عند فتح نموذج إنشاء الطلب
+  useEffect(() => {
+    if (showCreateModal) {
+      const s = DataService.getCompanySettings();
+      setNewUnitPrice(s.defaultPermitPrice ?? 150);
+      setNewCurrency(s.currency === 'EGP' ? 'EGP' : 'SAR');
+    }
+  }, [showCreateModal]);
 
   // عدد التصاريح الكلي مشتق من مجموع الذكور والإناث
   const newPermitsCount = newMaleCount + newFemaleCount;
@@ -186,6 +197,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     setNewFemaleCount(0);
     setNewPaidAmount(0);
     setNewNotes('');
+    setNewUnitPrice(DataService.getCompanySettings().defaultPermitPrice ?? 150);
   };
 
   const handleStatusChange = (orderId: string, status: OrderStatus) => {

@@ -424,6 +424,7 @@ export class DataService {
       // 1. Sync Company Settings
       if (settings && settings.length > 0) {
         const s = settings[0];
+        const currentLocalSettings = this.getCompanySettings();
         const mapped: CompanySettings = {
           id: s.id,
           companyNameAr: s.company_name_ar || '',
@@ -438,6 +439,9 @@ export class DataService {
           commercialRegistry: s.commercial_registry || '',
           invoiceFooterNote: s.invoice_footer_note || '',
           currency: s.currency || 'SAR',
+          defaultPermitPrice: s.default_permit_price !== undefined && s.default_permit_price !== null
+            ? Number(s.default_permit_price)
+            : (currentLocalSettings.defaultPermitPrice ?? 150),
         };
         saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
       }
@@ -1083,6 +1087,7 @@ export class DataService {
 
       if (!error && data && data.length > 0) {
         const s = data[0];
+        const currentLocal = this.getCompanySettings();
         const mapped: CompanySettings = {
           id: s.id,
           companyNameAr: s.company_name_ar || '',
@@ -1097,6 +1102,9 @@ export class DataService {
           commercialRegistry: s.commercial_registry || '',
           invoiceFooterNote: s.invoice_footer_note || '',
           currency: s.currency || 'SAR',
+          defaultPermitPrice: s.default_permit_price !== undefined && s.default_permit_price !== null
+            ? Number(s.default_permit_price)
+            : (currentLocal.defaultPermitPrice ?? 150),
         };
         saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
         if (typeof document !== 'undefined' && mapped.companyNameAr) {
@@ -1127,7 +1135,7 @@ export class DataService {
         // نستخدم id محدداً ثابتاً (row واحدة دائماً) — إذا لم يكن موجوداً يُنشأ تلقائياً
         const rowId = updated.id || '00000000-0000-0000-0000-000000000001';
 
-        const { data, error } = await sb.from('company_settings').upsert({
+        const payload: Record<string, any> = {
           id: rowId,
           company_name_ar: updated.companyNameAr,
           company_name_en: updated.companyNameEn,
@@ -1142,7 +1150,16 @@ export class DataService {
           invoice_footer_note: updated.invoiceFooterNote,
           currency: updated.currency,
           updated_at: new Date().toISOString(),
+        };
+
+        let { data, error } = await sb.from('company_settings').upsert({
+          ...payload,
+          default_permit_price: updated.defaultPermitPrice ?? 150,
         }, { onConflict: 'id' }).select();
+
+        if (error && error.message?.includes('default_permit_price')) {
+          ({ data, error } = await sb.from('company_settings').upsert(payload, { onConflict: 'id' }).select());
+        }
 
         if (error) {
           // الحفظ المحلي تم بالفعل — نكتفي بتسجيل خطأ السحابة دون مقاطعة المستخدم

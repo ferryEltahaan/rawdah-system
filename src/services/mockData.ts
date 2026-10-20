@@ -22,6 +22,7 @@ export const initialCompanySettings: CompanySettings = {
   commercialRegistry: '',
   invoiceFooterNote: 'تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء في الروضة الشريفة',
   currency: 'SAR',
+  defaultPermitPrice: 150,
 };
 
 export const initialFinancialAccounts: FinancialAccount[] = [

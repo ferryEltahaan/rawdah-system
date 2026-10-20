@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
     commercial_registry VARCHAR(100),
     invoice_footer_note TEXT DEFAULT 'تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء في الروضة الشريفة',
     currency VARCHAR(10) DEFAULT 'SAR',
+    default_permit_price DECIMAL(10, 2) DEFAULT 150.00,
     created_at TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'Asia/Riyadh'),
     updated_at TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'Asia/Riyadh')
 );

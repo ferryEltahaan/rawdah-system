@@ -13,6 +13,7 @@ import { CompanySettings } from '../types';
 import { DataService } from '../services/dataService';
 import { useToast } from './Toast';
 import { ImageUploadField } from './ImageUploadField';
+import { currencySymbol } from '../utils/currency';
 import confetti from 'canvas-confetti';
 
 // أدوات البذر والمسح متاحة للمدير العام فقط (سواء في التطوير أو الإنتاج)
@@ -264,7 +265,7 @@ export const CompanySettingsView: React.FC = () => {
             3. الفواتير والتقارير
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">الرقم الضريبي (إن وجد):</label>
               <input
@@ -300,6 +301,20 @@ export const CompanySettingsView: React.FC = () => {
                 ))}
               </select>
               <p className="text-[11px] text-slate-500 mt-1">تُطبع هذه العملة في سندات الحجز والتقارير المالية.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                سعر التصريح الواحد ({currencySymbol((settings.currency as any) || 'SAR')}):
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={settings.defaultPermitPrice ?? 150}
+                onChange={(e) => setSettings({ ...settings, defaultPermitPrice: Number(e.target.value) })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">السعر الافتراضي للتصريح عند إنشاء طلب حجز جديد.</p>
             </div>
           </div>
 

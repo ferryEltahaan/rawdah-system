@@ -69,6 +69,7 @@ export interface CompanySettings {
   commercialRegistry?: string;
   invoiceFooterNote: string;
   currency: string;
+  defaultPermitPrice?: number;
 }
 
 export interface Customer {
