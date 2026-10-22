@@ -100,6 +100,7 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'rawdah_current_user',
   DAILY_SCENARIO: 'rawdah_daily_scenario',
   LAST_SYNC: 'rawdah_last_cloud_sync',
+  PERMIT_PRICE: 'rawdah_default_permit_price',
 };
 
 function touchLastSync() {
@@ -425,6 +426,11 @@ export class DataService {
       if (settings && settings.length > 0) {
         const s = settings[0];
         const currentLocalSettings = this.getCompanySettings();
+        const price = (s.default_permit_price !== undefined && s.default_permit_price !== null)
+          ? Number(s.default_permit_price)
+          : currentLocalSettings.defaultPermitPrice;
+        if (price) saveToStorage(STORAGE_KEYS.PERMIT_PRICE, price);
+
         const mapped: CompanySettings = {
           id: s.id,
           companyNameAr: s.company_name_ar || '',
@@ -439,9 +445,7 @@ export class DataService {
           commercialRegistry: s.commercial_registry || '',
           invoiceFooterNote: s.invoice_footer_note || '',
           currency: s.currency || 'SAR',
-          defaultPermitPrice: s.default_permit_price !== undefined && s.default_permit_price !== null
-            ? Number(s.default_permit_price)
-            : (currentLocalSettings.defaultPermitPrice ?? 150),
+          defaultPermitPrice: price,
         };
         saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
       }
@@ -1013,6 +1017,12 @@ export class DataService {
           if (!row || !row.id) return;
           console.log('⚡ Company settings Realtime event received:', payload.eventType, row);
 
+          const currentSettings = DataService.getCompanySettings();
+          const price = (row.default_permit_price !== undefined && row.default_permit_price !== null)
+            ? Number(row.default_permit_price)
+            : currentSettings.defaultPermitPrice;
+          if (price) saveToStorage(STORAGE_KEYS.PERMIT_PRICE, price);
+
           const mapped: CompanySettings = {
             id: row.id,
             companyNameAr: row.company_name_ar || '',
@@ -1027,6 +1037,7 @@ export class DataService {
             commercialRegistry: row.commercial_registry || '',
             invoiceFooterNote: row.invoice_footer_note || '',
             currency: row.currency || 'SAR',
+            defaultPermitPrice: price,
           };
           saveToStorage(STORAGE_KEYS.SETTINGS, mapped);
           window.dispatchEvent(new Event('rawdah_storage_update'));
@@ -1038,6 +1049,17 @@ export class DataService {
           const row = payload.new as any;
           if (!row || !row.id) return;
           console.log('⚡ Audit log Realtime event received:', row);
+
+          // استلام تحديثات سعر التصريح لحظياً عبر السحابة
+          if (row.entity_name === 'company_settings' && row.details?.defaultPermitPrice) {
+            const newPrice = Number(row.details.defaultPermitPrice);
+            if (!Number.isNaN(newPrice) && newPrice > 0) {
+              saveToStorage(STORAGE_KEYS.PERMIT_PRICE, newPrice);
+              const cur = DataService.getCompanySettings();
+              saveToStorage(STORAGE_KEYS.SETTINGS, { ...cur, defaultPermitPrice: newPrice });
+              window.dispatchEvent(new Event('rawdah_storage_update'));
+            }
+          }
 
           const currentLogs = DataService.getAuditLogs();
           if (!currentLogs.some(l => l.id === row.id)) {
@@ -1069,10 +1091,18 @@ export class DataService {
   // --- Company Settings ---
   static getCompanySettings(): CompanySettings {
     const s = loadFromStorage(STORAGE_KEYS.SETTINGS, initialCompanySettings);
-    if (typeof document !== 'undefined' && s.companyNameAr && !document.title.startsWith(s.companyNameAr)) {
-      document.title = `${s.companyNameAr} | نظام تصاريح الروضة`;
+    const savedPrice = loadFromStorage<number | null>(STORAGE_KEYS.PERMIT_PRICE, null);
+    const defaultPermitPrice = (savedPrice !== null && !Number.isNaN(savedPrice) && savedPrice > 0)
+      ? savedPrice
+      : (s.defaultPermitPrice ?? 150);
+    const result: CompanySettings = {
+      ...s,
+      defaultPermitPrice,
+    };
+    if (typeof document !== 'undefined' && result.companyNameAr && !document.title.startsWith(result.companyNameAr)) {
+      document.title = `${result.companyNameAr} | نظام تصاريح الروضة`;
     }
-    return s;
+    return result;
   }
 
   /** جلب مباشر وتحديث إعدادات المؤسسة من السحابة فوراً مع تحديث العنوان والشاشات */
@@ -1087,7 +1117,31 @@ export class DataService {
 
       if (!error && data && data.length > 0) {
         const s = data[0];
+        let price: number | null = (s.default_permit_price !== undefined && s.default_permit_price !== null)
+          ? Number(s.default_permit_price)
+          : null;
+
+        if (price === null || Number.isNaN(price) || price <= 0) {
+          try {
+            const { data: logData } = await getSupabase()!
+              .from('audit_logs')
+              .select('details')
+              .eq('entity_name', 'company_settings')
+              .order('created_at', { ascending: false })
+              .limit(1);
+            if (logData && logData[0]?.details?.defaultPermitPrice) {
+              const parsed = Number(logData[0].details.defaultPermitPrice);
+              if (!Number.isNaN(parsed) && parsed > 0) price = parsed;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
         const currentLocal = this.getCompanySettings();
+        const finalPrice = (price !== null && !Number.isNaN(price) && price > 0) ? price : currentLocal.defaultPermitPrice;
+        saveToStorage(STORAGE_KEYS.PERMIT_PRICE, finalPrice);
+
         const mapped: CompanySettings = {
           id: s.id,
           companyNameAr: s.company_name_ar || '',
@@ -1102,9 +1156,7 @@ export class DataService {
           commercialRegistry: s.commercial_registry || '',
           invoiceFooterNote: s.invoice_footer_note || '',
           currency: s.currency || 'SAR',
-          defaultPermitPrice: s.default_permit_price !== undefined && s.default_permit_price !== null
-            ? Number(s.default_permit_price)
-            : (currentLocal.defaultPermitPrice ?? 150),
+          defaultPermitPrice: finalPrice,
         };
         saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
         if (typeof document !== 'undefined' && mapped.companyNameAr) {
@@ -1126,13 +1178,19 @@ export class DataService {
   static async updateCompanySettings(settings: Partial<CompanySettings>): Promise<{ settings: CompanySettings; localSaved: boolean }> {
     const current = this.getCompanySettings();
     const updated = { ...current, ...settings };
+    if (settings.defaultPermitPrice !== undefined && settings.defaultPermitPrice !== null) {
+      const p = Number(settings.defaultPermitPrice);
+      if (!Number.isNaN(p) && p > 0) {
+        saveToStorage(STORAGE_KEYS.PERMIT_PRICE, p);
+        updated.defaultPermitPrice = p;
+      }
+    }
     const localSaved = saveToStorage(STORAGE_KEYS.SETTINGS, updated);
 
     // Push to Supabase Cloud directly
     if (getIsConfigured() && getSupabase()) {
       const sb = getSupabase()!;
       try {
-        // نستخدم id محدداً ثابتاً (row واحدة دائماً) — إذا لم يكن موجوداً يُنشأ تلقائياً
         const rowId = updated.id || '00000000-0000-0000-0000-000000000001';
 
         const payload: Record<string, any> = {
@@ -1154,19 +1212,30 @@ export class DataService {
 
         let { data, error } = await sb.from('company_settings').upsert({
           ...payload,
-          default_permit_price: updated.defaultPermitPrice ?? 150,
+          default_permit_price: updated.defaultPermitPrice,
         }, { onConflict: 'id' }).select();
 
         if (error && error.message?.includes('default_permit_price')) {
           ({ data, error } = await sb.from('company_settings').upsert(payload, { onConflict: 'id' }).select());
         }
 
+        // تسجيل دائم في audit_logs ليتمكن كل مستخدم في أي جهاز من مزامنة السعر فوراً
+        const user = this.getCurrentUser();
+        const validUuid = user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null;
+        sb.from('audit_logs').insert({
+          user_id: validUuid,
+          action_type: 'UPDATE_SETTINGS',
+          entity_name: 'company_settings',
+          entity_id: rowId,
+          details: { defaultPermitPrice: updated.defaultPermitPrice, currency: updated.currency, updatedBy: user?.fullName || 'المدير العام' },
+        }).then(({ error: logErr }) => {
+          if (logErr) console.warn('Company settings audit log warning:', logErr);
+        });
+
         if (error) {
-          // الحفظ المحلي تم بالفعل — نكتفي بتسجيل خطأ السحابة دون مقاطعة المستخدم
           console.error('Cloud update error in Supabase:', error);
         } else {
           console.log('✅ Company settings saved to Cloud:', data);
-          // حدِّث الـ id المحلي بالـ id الفعلي من السحابة
           if (data && data[0]) {
             const finalUpdated = { ...updated, id: data[0].id };
             saveToStorage(STORAGE_KEYS.SETTINGS, finalUpdated);
@@ -2758,7 +2827,9 @@ export class DataService {
     if (order) {
       order.deliveryStatus = deliveryStatus;
       saveToStorage(STORAGE_KEYS.ORDERS, orders);
-      this.addAuditLog(this.getCurrentUser().id, this.getCurrentUser().fullName, 'UPDATE_ORDER', 'sales_orders', orderId, { deliveryStatus });
+      const user = this.getCurrentUser();
+      const userId = user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id) ? user.id : '00000000-0000-0000-0000-000000000000';
+      this.addAuditLog(userId, user?.fullName || 'النظام', 'UPDATE_ORDER', 'sales_orders', orderId, { deliveryStatus });
       // Cloud update
       if (getIsConfigured() && getSupabase()) {
         getSupabase()!.from('sales_orders').update({ delivery_status: deliveryStatus }).eq('id', orderId).then(({ error }) => {

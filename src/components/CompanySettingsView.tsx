@@ -123,7 +123,8 @@ export const CompanySettingsView: React.FC = () => {
     e.preventDefault();
     setIsSaving(true);
 
-    const { localSaved } = await DataService.updateCompanySettings(settings);
+    const { settings: savedSettings, localSaved } = await DataService.updateCompanySettings(settings);
+    setSettings(savedSettings);
 
     setIsSaving(false);
     if (!localSaved) return;

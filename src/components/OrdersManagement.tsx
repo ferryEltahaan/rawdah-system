@@ -211,6 +211,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const handleDeliveryStatusChange = (orderId: string, status: DeliveryStatus) => {
     DataService.updateDeliveryStatus(orderId, status);
     refreshData();
+    const label = status === 'sent' ? 'تم إرساله للعميل' : status === 'waiting' ? 'انتظار' : 'لم يتم الإرسال';
+    toast.success(`تم تحديث موقف الإرسال إلى «${label}».`);
   };
 
   // أجزاء الرسالة التي يختار الموظف إرسالها للعميل
@@ -313,8 +315,9 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
       imageActions.copyOrDownload(firstWithImage.imageUrl, `تصريح_${firstWithImage.permitCode}.png`);
     }
 
+    const cleanPhone = (order.customerWhatsapp || '').replace(/[^0-9]/g, '');
     window.open(
-      `https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(order))}`,
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(buildWhatsAppMessage(order))}`,
       '_blank',
       'noopener'
     );
@@ -331,6 +334,11 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
     try {
       await navigator.clipboard.writeText(buildWhatsAppMessage(order));
       toast.success('تم نسخ نص الرسالة إلى الحافظة.');
+      if (markAsSent && order.deliveryStatus !== 'sent') {
+        DataService.updateDeliveryStatus(order.id, 'sent');
+        refreshData();
+        toast.success('تم تحديث موقف الإرسال إلى «تم إرساله للعميل».');
+      }
     } catch {
       toast.error('تعذر النسخ تلقائياً — يمكنك تحديد النص ونسخه يدوياً.');
     }
@@ -379,20 +387,32 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
     toast.success(order.lastReminderAt ? 'تمت إعادة إرسال تذكير السداد وتسجيله.' : 'تم إرسال تذكير السداد وتسجيله.');
   };
 
-  const handleCopyPermitImage = (imageUrl: string, permitCode: string) =>
+  const handleCopyPermitImage = (imageUrl: string, permitCode: string) => {
     imageActions.copyOrDownload(imageUrl, `تصريح_${permitCode}.png`);
+    if (whatsAppModalOrder && markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
+      DataService.updateDeliveryStatus(whatsAppModalOrder.id, 'sent');
+      refreshData();
+      toast.success('تم نسخ التصريح وتحديث موقف الإرسال إلى «تم إرساله للعميل».');
+    }
+  };
 
   const handleDownloadPermitImage = (imageUrl: string, permitCode: string) =>
     imageActions.download(imageUrl, `${permitCode}.png`);
 
   // مشاركة مباشرة عبر زر المشاركة الأصلي بالجوال (يفتح قائمة واتساب بالصورة مرفقة ومعها كامل نص الرسالة كـ Caption)
-  const handleSharePermitImage = (imageUrl: string, permitCode: string) => {
+  const handleSharePermitImage = async (imageUrl: string, permitCode: string) => {
     const fullText = whatsAppModalOrder ? buildWhatsAppMessage(whatsAppModalOrder) : `تصريح رقم ${permitCode}`;
-    return imageActions.shareOrDownload(imageUrl, `تصريح_${permitCode}.png`, {
+    const res = await imageActions.shareOrDownload(imageUrl, `تصريح_${permitCode}.png`, {
       title: `تصريح زيارة الروضة الشريفة ${permitCode}`,
       text: fullText,
       downloadedMessage: 'تم تحميل صورة التصريح بنجاح — يمكنك إرفاقها في محادثة الواتساب.',
     });
+    if (whatsAppModalOrder && markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
+      DataService.updateDeliveryStatus(whatsAppModalOrder.id, 'sent');
+      refreshData();
+      toast.success('تم إرسال الكود وتحديث موقف الإرسال إلى «تم إرساله للعميل».');
+    }
+    return res;
   };
 
   const handlePrintReceipt = async (order: SalesOrder) => {
