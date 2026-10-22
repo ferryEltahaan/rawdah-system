@@ -36,20 +36,38 @@ export function useImageActions() {
       return false;
     }
     try {
-      const isDataUrl = imageUrl.startsWith('data:');
-      const objectUrl = isDataUrl ? await dataUrlToObjectUrl(imageUrl) : imageUrl;
+      // 1. تحويل الرابط دائماً إلى Blob سواء كان data URL أو رابط https سحابي
+      let blob: Blob;
+      if (imageUrl.startsWith('data:')) {
+        blob = await dataUrlToBlob(imageUrl);
+      } else {
+        const response = await fetch(imageUrl, { mode: 'cors' });
+        if (!response.ok) throw new Error('fetch-failed');
+        blob = await response.blob();
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
       const link = document.createElement('a');
       link.href = objectUrl;
       link.download = filename;
+      if (isIOS) {
+        link.target = '_blank';
+        link.rel = 'noopener';
+      }
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      if (isDataUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+      toast.success('تم بدء تنزيل صورة التصريح بنجاح.');
       return true;
     } catch {
-      // الحل الأخير: فتح الصورة في تبويب جديد ليحفظها المستخدم يدوياً
+      // الحل البديل: فتح الصورة مباشرة في تبويب جديد للحفظ اليدوي
       window.open(imageUrl, '_blank', 'noopener,noreferrer');
-      toast.info('تعذر التحميل المباشر — فُتحت الصورة في تبويب جديد، احفظها يدوياً بالضغط المطول عليها.');
+      toast.info('تم فتح الصورة في تبويب جديد — اضغط عليها مطولاً لاختيار «حفظ في الصور».');
       return false;
     }
   }, [toast]);

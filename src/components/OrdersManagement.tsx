@@ -442,8 +442,29 @@ ${accountsList}`);
     }
   };
 
-  const handleDownloadPermitImage = (imageUrl: string, permitCode: string) =>
-    imageActions.download(imageUrl, `${permitCode}.png`);
+  const handleDownloadPermitImage = async (imageUrl: string, permitCode: string) => {
+    try {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+      if (isIOS && typeof navigator !== 'undefined' && navigator.canShare) {
+        const res = await fetch(imageUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `تصريح_${permitCode}.jpg`, { type: blob.type || 'image/jpeg' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `تصريح ${permitCode}`,
+          });
+          toast.success('اختر «حفظ الصورة» من القائمة لحفظها في ألبوم الصور.');
+          return;
+        }
+      }
+    } catch {
+      /* إذا ألغى المستخدم أو حدث استثناء نكمل مع التحميل المباشر */
+    }
+    await imageActions.download(imageUrl, `تصريح_${permitCode}.png`);
+  };
 
   // إرسال كود وصورة التصريح المحدد للعميل مباشرة في واتساب دون الحاجة لتسجيل رقمه أو البحث عنه
   const handleSendPermitDirect = (p: Permit) => {
@@ -1616,10 +1637,11 @@ ${accountsList}`);
                               <button
                                 type="button"
                                 onClick={() => handleDownloadPermitImage(p.imageUrl, p.permitCode)}
-                                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
-                                title="تحميل الصورة على جهازك"
+                                className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
+                                title="حفظ صورة التصريح على جهازك"
                               >
-                                <Download className="w-4 h-4" />
+                                <Download className="w-3.5 h-3.5" />
+                                <span>حفظ الصورة</span>
                               </button>
                               <button
                                 type="button"
