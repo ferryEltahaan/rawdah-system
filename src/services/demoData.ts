@@ -70,13 +70,14 @@ export function buildDemoDataset(): DemoDataset {
   const yesterday = riyadhDate(-1);
   const threeDaysAgo = riyadhDate(-3);
 
-  // هوية الموظفين الفعليين — نفس معرّفات UUID المخزنة في جدول profiles
+  // هوية الموظفين الفعليين — UUID حقيقية من جدول profiles
+  // admin = حسين حمدي عبد التواب | sara = سارة المطيري | farid = فريد الطحان
   const USERS = {
-    admin: { id: 'fe292e3d-9509-43d6-9561-aba950cb8540', name: 'المدير العام' },
-    sales: { id: 'e48d53af-a5ae-49b2-a5ef-e91307ed02db', name: 'موظف المبيعات' },
-    inventory: { id: 'e3d8cda3-8752-41ef-aaf2-a5694549088c', name: 'مسؤول المخزون والتصاريح' },
-    accountant: { id: 'e3faa12e-0e95-4b05-bbd3-6ed8993d7ebc', name: 'المحاسب المالي' },
-    sara: { id: '2af77703-0fb8-4ed4-bd5c-98e4142baa4b', name: 'سارة المطيري' },
+    admin:    { id: '07d05943-93b3-4942-80b3-af74c01f710e', name: 'حسين حمدي عبد التواب' },
+    sales:    { id: '90eadae1-5759-4df9-8b26-33bd143adc6e', name: 'فريد الطحان' },
+    inventory:{ id: '90eadae1-5759-4df9-8b26-33bd143adc6e', name: 'فريد الطحان' },
+    accountant:{ id: '819e45c1-86e6-429b-9366-131116fe6f4d', name: 'فريد محمد لبيب' },
+    sara:     { id: '2af77703-0fb8-4ed4-bd5c-98e4142baa4b', name: 'سارة المطيري' },
   };
 
   // ---------------------------------------------------------------------------

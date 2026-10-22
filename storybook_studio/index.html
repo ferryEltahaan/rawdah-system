@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>استوديو حكايات وتلوين الأبطال الصغار | Storybook & Coloring Engine</title>
+  <!-- Google Fonts: Cairo & Amiri -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@300;400;600;700;800;900&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Background Ambient Lights -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <!-- Main Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">👑</div>
+        <div class="brand-text">
+          <h1>ماكينة قصص وتلوين الأطفال <span class="badge">Zero-Error Engine</span></h1>
+          <p>نظام توليد وتجميع كتب التلوين المخصصة بدون أخطاء | جاهز للطباعة A4</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="loadMaryamBtn" class="btn btn-secondary">
+          <span class="icon">✨</span> تحميل مشروع مريم الجاهز
+        </button>
+        <button id="addStoriesBtn" class="btn btn-stories">
+          <span class="icon">📚</span> إضافة قصص جديدة
+        </button>
+        <button id="newBookBtn" class="btn btn-outline">
+          <span class="icon">➕</span> كتاب لطفل جديد
+        </button>
+        <button id="printFullBookBtn" class="btn btn-primary">
+          <span class="icon">🖨️</span> طباعة وتصدير الكتاب (PDF)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Stepper / Tabs -->
+  <nav class="stepper-nav">
+    <div class="stepper-container">
+      <button class="step-btn active" data-tab="tab-identity">
+        <span class="step-num">1</span>
+        <div class="step-info">
+          <span class="step-title">هوية الطفل والقصة</span>
+          <span class="step-desc">صورة الطفل + مواصفات الهوية + المشاهد</span>
+        </div>
+      </button>
+
+      <button class="step-btn" data-tab="tab-lineart">
+        <span class="step-num">2</span>
+        <div class="step-info">
+          <span class="step-title">استوديو التلوين الحسابي</span>
+          <span class="step-desc">تحويل المشاهد لخطوط سوداء نقية 100%</span>
+        </div>
+      </button>
+
+      <button class="step-btn" data-tab="tab-activities">
+        <span class="step-num">3</span>
+        <div class="step-info">
+          <span class="step-title">الأنشطة الخوارزمية المضمونة</span>
+          <span class="step-desc">متاهات ذكية + توصيل النقاط + شهادة إنجاز</span>
+        </div>
+      </button>
+
+      <button class="step-btn" data-tab="tab-preview">
+        <span class="step-num">4</span>
+        <div class="step-info">
+          <span class="step-title">معاينة الكتاب وطباعة A4</span>
+          <span class="step-desc">عرض الصفحات المزدوجة وتصدير PDF</span>
+        </div>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="main-content">
+
+    <!-- ======================================================== -->
+    <!-- TAB 1: CHILD IDENTITY & STORY -->
+    <!-- ======================================================== -->
+    <section id="tab-identity" class="tab-pane active">
+      <div class="grid-2-col">
+        
+        <!-- Left Column: Child Profile Card -->
+        <div class="glass-card">
+          <div class="card-header">
+            <h2><span class="icon">👧</span> بطاقة هوية الطفل (Character Identity Anchor)</h2>
+            <p>القواعد الصارمة التي تُحقن في كل مشهد لمنع تغير ملامح الطفل عبر صفحات الكتاب.</p>
+          </div>
+
+          <div class="upload-section">
+            <div class="photo-preview-container" id="photoDropArea">
+              <img id="childPhotoImg" src="assets/mariam/mariam_school_color_1792360059645.jpg" alt="صورة الطفل" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'><rect fill=\'%23333\' width=\'100\' height=\'100\'/><text fill=\'%23fff\' x=\'50\' y=\'55\' text-anchor=\'middle\'>صورة الطفل</text></svg>'">
+              <div class="photo-overlay">
+                <span>📷 انقر لتغيير الصورة أو اسحبها هنا</span>
+              </div>
+              <input type="file" id="childPhotoInput" accept="image/*" style="display: none;">
+            </div>
+
+            <div class="quick-samples">
+              <span class="sample-label">أو اختر نموذجاً سريعاً:</span>
+              <button class="chip-btn active" data-sample="mariam">👑 مريم (الأميرة والقلعة)</button>
+              <button class="chip-btn" data-sample="ahmed">🚀 أحمد (رائد الفضاء الصغير)</button>
+              <button class="chip-btn" data-sample="nour">🦁 نور (مستكشفة الغابة العجيبة)</button>
+            </div>
+          </div>
+
+          <form id="childIdentityForm" class="form-grid">
+            <div class="form-group">
+              <label for="childName">اسم البطل / البطلة:</label>
+              <input type="text" id="childName" value="مريم" placeholder="مثال: مريم" required>
+            </div>
+
+            <div class="form-group">
+              <label for="childAge">العمر التقريبي:</label>
+              <input type="text" id="childAge" value="5 سنوات" placeholder="مثال: 5 سنوات">
+            </div>
+
+            <div class="form-group">
+              <label for="bookTitle">عنوان الكتاب المقترح:</label>
+              <input type="text" id="bookTitle" value="الأميرة مريم والقلعة السحرية" placeholder="عنوان القصة">
+            </div>
+
+            <div class="form-group">
+              <label for="artStyle">الأسلوب الفني للرسوم:</label>
+              <select id="artStyle">
+                <option value="pixar_3d" selected>رسوم ثلاثية الأبعاد لطيفة (Disney / Pixar 3D Art)</option>
+                <option value="storybook_watercolor">ألوان مائية كلاسيكية دافئة (Classic Storybook Watercolor)</option>
+                <option value="anime_whimsical">أنيمي كرتوني ناعم للأطفال (Whimsical 2D Cartoon)</option>
+              </select>
+            </div>
+
+            <div class="form-group full-width">
+              <label for="facialFeatures">الملامح التشريحية الثابتة (Identity Anchor):</label>
+              <textarea id="facialFeatures" rows="3">وجه بيضاوي ناعم مع جبهة واضحة ومشدودة، عينان لوزيتان واسعتان بنيتان داكنتان بنظرة ذكية، حواجب طبيعية داكنة مقوسة برقة، أنف دقيق، شفتان ناعمتان بابتسامة رقيقة هادئة، شعر بني داكن مشدود للأعلى ومربوط بفيونكة بيضاء نقية.</textarea>
+            </div>
+
+            <div class="form-group full-width">
+              <label for="outfitRule">قاعدة الملابس المعتمدة:</label>
+              <input type="text" id="outfitRule" value="فستان أميرة وردي بأكمام منتفخة وزخارف ذهبية مع تاج ذهبي رقيق">
+            </div>
+
+            <div class="form-group full-width actions-row">
+              <button type="button" id="copyAnchorBtn" class="btn btn-secondary">
+                <span class="icon">📋</span> نسخ برومبت الهوية بالإنجليزية (لـ Midjourney / Flux)
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Right Column: Story Scenes Manifest -->
+        <div class="glass-card">
+          <div class="card-header">
+            <h2><span class="icon">📖</span> مشاهد القصة المعتمدة (Story Scenes)</h2>
+            <p>قائمة المشاهد المتناسقة. كل مشهد يحتوي على النص العربي والبرومبت المولد.</p>
+          </div>
+
+          <div class="scenes-list" id="scenesListContainer">
+            <!-- Dynamically populated via JS -->
+          </div>
+
+          <div class="card-footer">
+            <button id="addSceneBtn" class="btn btn-outline full-width">
+              <span class="icon">➕</span> إضافة مشهد جديد للقصة
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ======================================================== -->
+    <!-- TAB 2: ZERO-ERROR LINE-ART CONVERTER -->
+    <!-- ======================================================== -->
+    <section id="tab-lineart" class="tab-pane">
+      <div class="lineart-studio-layout">
+        
+        <!-- Controls Sidebar -->
+        <div class="glass-card controls-card">
+          <div class="card-header">
+            <h2><span class="icon">⚙️</span> محرك استخراج الخطوط الحسابي</h2>
+            <p>خوارزمية هندسية تحول الصورة فورياً لصفحة تلوين نقية 100% بدون أي ظلال رمادية.</p>
+          </div>
+
+          <div class="control-group">
+            <label for="sceneSelector">اختر المشهد المراد معالجته:</label>
+            <select id="sceneSelector">
+              <option value="cover">1. غلاف الكتاب (Cover Scene)</option>
+              <option value="school">2. مريم في طريقها إلى المدرسة</option>
+              <option value="crown">3. مريم والتاج السحري</option>
+              <option value="castle">4. الوصول إلى القلعة السحرية</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <div class="label-with-val">
+              <label for="lineThickness">سمك خطوط التلوين (Line Thickness):</label>
+              <span id="lineThicknessVal" class="val-badge">3 px (مناسب للأطفال)</span>
+            </div>
+            <input type="range" id="lineThickness" min="1" max="7" value="3" step="1">
+            <div class="range-labels">
+              <span>دقيق (كبار)</span>
+              <span>متوسط</span>
+              <span>عريض (3-5 سنوات)</span>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="label-with-val">
+              <label for="edgeThreshold">حساسية التفاصيل (Detail Level):</label>
+              <span id="edgeThresholdVal" class="val-badge">متوازن</span>
+            </div>
+            <input type="range" id="edgeThreshold" min="15" max="80" value="45" step="1">
+            <div class="range-labels">
+              <span>تفاصيل أكثر</span>
+              <span>متوازن</span>
+              <span>خطوط رئيسية فقط</span>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="label-with-val">
+              <label for="smoothingFactor">تنعيم وإغلاق الخطوط (Smooth Contours):</label>
+              <span id="smoothingVal" class="val-badge">مفعل</span>
+            </div>
+            <input type="range" id="smoothingFactor" min="1" max="5" value="2" step="1">
+          </div>
+
+          <div class="toggle-group">
+            <label class="toggle-switch">
+              <input type="checkbox" id="cleanBackgroundToggle" checked>
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">تبييض إجباري للخلفية (100% Pure White #FFFFFF)</span>
+          </div>
+
+          <div class="toggle-group">
+            <label class="toggle-switch">
+              <input type="checkbox" id="boldOutlinesToggle" checked>
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">تأكيد حدود الشخصية الخارجية (Bold Outer Borders)</span>
+          </div>
+
+          <div class="action-buttons-stack">
+            <button id="applyAlgorithmBtn" class="btn btn-primary full-width">
+              <span class="icon">⚡</span> معالجة واستخراج صفحة التلوين
+            </button>
+
+            <button id="downloadColoringPageBtn" class="btn btn-secondary full-width">
+              <span class="icon">💾</span> تنزيل صفحة التلوين عالية الدقة (PNG)
+            </button>
+
+            <button id="saveToBookManifestBtn" class="btn btn-outline full-width">
+              <span class="icon">✅</span> اعتماد المشهد لكتاب الطباعة
+            </button>
+          </div>
+        </div>
+
+        <!-- Visual Workspace / Split Slider -->
+        <div class="glass-card workspace-card">
+          <div class="workspace-header">
+            <div class="workspace-title">
+              <h3>معاينة المقارنة اللحظية (قبل / بعد)</h3>
+              <p>حرك المؤشر في المنتصف لرؤية تطابق صفحة التلوين مع المشهد الأصلي بنسبة 1:1</p>
+            </div>
+            <div class="view-modes">
+              <button class="view-btn active" id="viewModeSplit">انقسام مزدوج</button>
+              <button class="view-btn" id="viewModeColoringOnly">صفحة التلوين فقط</button>
+              <button class="view-btn" id="viewModeColorOnly">الأصلية الملونة</button>
+            </div>
+          </div>
+
+          <!-- Interactive Before / After Split Viewer -->
+          <div class="split-viewer-container" id="splitViewer">
+            
+            <!-- Underneath: The Coloring Page Output (Extracted) -->
+            <div class="viewer-canvas-wrap">
+              <canvas id="outputColoringCanvas"></canvas>
+              <span class="canvas-tag tag-right">صفحة التلوين النقية (100% White & Black)</span>
+            </div>
+
+            <!-- On Top: Original Color Image (Clipped by Slider) -->
+            <div class="viewer-clipped-wrap" id="clippedColorWrap">
+              <img id="sourceColorImg" src="assets/mariam/mariam_cover_color_1792360002072.jpg" alt="المشهد الملون الأصلي">
+              <span class="canvas-tag tag-left">المشهد الملون الأصلي</span>
+            </div>
+
+            <!-- Draggable Splitter Handle -->
+            <div class="split-slider-handle" id="splitHandle">
+              <div class="handle-line"></div>
+              <div class="handle-circle">↔</div>
+            </div>
+          </div>
+
+          <!-- Hidden processing canvas -->
+          <canvas id="tempProcessingCanvas" style="display: none;"></canvas>
+
+          <div class="workspace-footer">
+            <div class="status-indicator">
+              <span class="status-dot"></span>
+              <span id="canvasStatusText">جاهز للمعالجة الحسابية الفورية</span>
+            </div>
+            <div class="specs-badge">
+              <span>أبعاد الطباعة: A4 Portrait (2480 × 3508 px @ 300 DPI)</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ======================================================== -->
+    <!-- TAB 3: ALGORITHMIC ACTIVITIES -->
+    <!-- ======================================================== -->
+    <section id="tab-activities" class="tab-pane">
+      <div class="activities-grid">
+        
+        <!-- Activity 1: The Magic Maze -->
+        <div class="glass-card activity-card">
+          <div class="card-header">
+            <h2><span class="icon">🌀</span> 1. المتاهة السحرية (مضمونة الحل 100%)</h2>
+            <p>توليد خوارزمي بمسار مؤكد يبدأ من بطلتنا مريم وينتهي عند القلعة السحرية.</p>
+          </div>
+
+          <div class="activity-canvas-box">
+            <canvas id="mazeCanvas" width="500" height="500"></canvas>
+          </div>
+
+          <div class="activity-controls">
+            <div class="row-flex">
+              <label>مستوى الصعوبة:</label>
+              <select id="mazeDifficulty">
+                <option value="10">سهل جداً (3-5 سنوات)</option>
+                <option value="15" selected>متوسط ممتع (6-8 سنوات)</option>
+                <option value="22">تحدي الأبطال (9+ سنوات)</option>
+              </select>
+            </div>
+
+            <div class="row-flex">
+              <button id="regenerateMazeBtn" class="btn btn-secondary">
+                <span class="icon">🔄</span> توليد متاهة جديدة
+              </button>
+              <button id="toggleMazeSolutionBtn" class="btn btn-outline">
+                <span class="icon">👁️</span> إظهار / إخفاء الحل
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity 2: Connect The Dots -->
+        <div class="glass-card activity-card">
+          <div class="card-header">
+            <h2><span class="icon">🔢</span> 2. توصيل النقاط بالأرقام (التاج السحري)</h2>
+            <p>يتعلم الطفل الأرقام بتوصيل النقاط من 1 إلى 20 ليكتشف التاج الملكي ثم يلوّنه.</p>
+          </div>
+
+          <div class="activity-canvas-box">
+            <canvas id="dotsCanvas" width="500" height="500"></canvas>
+          </div>
+
+          <div class="activity-controls">
+            <div class="row-flex">
+              <label>الشكل المراد رسمه:</label>
+              <select id="dotsShapeSelect">
+                <option value="crown" selected>👑 التاج الملكي لمريم</option>
+                <option value="castle">🏰 برج القلعة السحرية</option>
+                <option value="star">⭐ النجمة المضيئة</option>
+              </select>
+            </div>
+
+            <button id="downloadDotsBtn" class="btn btn-secondary full-width">
+              <span class="icon">💾</span> تنزيل صفحة النقاط (PNG)
+            </button>
+          </div>
+        </div>
+
+        <!-- Activity 3: Child's Completion Certificate -->
+        <div class="glass-card activity-card full-width-card">
+          <div class="card-header">
+            <h2><span class="icon">🎖️</span> 3. شهادة فنانة القصة المتميزة (في نهاية الكتاب)</h2>
+            <p>تُطبع في نهاية الكتاب مع اسم الطفلة ومكان لتوقيعها وتاريخ إتمام تلوين الحكاية.</p>
+          </div>
+
+          <div class="certificate-preview-box">
+            <div class="certificate-page" id="certificateRender">
+              <div class="cert-border">
+                <div class="cert-inner-border">
+                  <div class="cert-ribbon">🏆</div>
+                  <h2 class="cert-title">شهادة فنانة القصة المتميزة</h2>
+                  <p class="cert-subtitle">تُمنح هذه الشهادة بكل فخر للبطلة المبدعة</p>
+                  
+                  <div class="cert-child-name" id="certChildNameDisplay">الأميرة مريم</div>
+                  
+                  <p class="cert-body">
+                    تقديراً لإبداعها وخيالها الرائع في قراءة وتلوين مشاهد حكاية<br>
+                    <strong id="certBookTitleDisplay">«الأميرة مريم والقلعة السحرية»</strong><br>
+                    وإتمام جميع الأنشطة والمغامرات بنجاح باهر!
+                  </p>
+
+                  <div class="cert-stars">⭐⭐⭐⭐⭐</div>
+
+                  <div class="cert-signatures">
+                    <div class="sig-col">
+                      <span class="sig-line"></span>
+                      <span class="sig-label">توقيع البطلة مريم</span>
+                    </div>
+                    <div class="cert-seal">
+                      <div class="seal-circle">ختم الإبداع الملكي</div>
+                    </div>
+                    <div class="sig-col">
+                      <span class="sig-line" id="certDateDisplay">20 أكتوبر 2026</span>
+                      <span class="sig-label">تاريخ الإنجاز</span>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ======================================================== -->
+    <!-- TAB 4: A4 PRINT-READY BOOK PREVIEW & PDF EXPORTER -->
+    <!-- ======================================================== -->
+    <section id="tab-preview" class="tab-pane">
+      
+      <!-- Top Action Bar -->
+      <div class="glass-card print-toolbar">
+        <div class="toolbar-info">
+          <h2><span class="icon">📚</span> كتاب مريم الكامل المجهز للطباعة A4</h2>
+          <p>الصفحات مرتبة: الغلاف ⬅️ الإهداء ⬅️ (صفحة ملونة يميناً + صفحة تلوين يساراً) ⬅️ الأنشطة ⬅️ الشهادة</p>
+        </div>
+        <div class="toolbar-buttons">
+          <button id="directPrintBtn" class="btn btn-primary btn-large">
+            <span class="icon">🖨️</span> طباعة فورية / حفظ كـ PDF
+          </button>
+          <button id="downloadAllPagesZipBtn" class="btn btn-secondary">
+            <span class="icon">📦</span> تنزيل جميع الصفحات كصور منفصلة
+          </button>
+        </div>
+      </div>
+
+      <!-- The Printable Book Canvas Container (Screen Preview + Print Mode) -->
+      <div class="book-scroll-wrapper" id="bookPrintableContainer">
+        
+        <!-- PAGE 1: COVER -->
+        <article class="a4-page book-cover-page">
+          <div class="cover-art-wrapper">
+            <img class="page-full-img" src="assets/mariam/mariam_cover_color_1792360002072.jpg" alt="غلاف الكتاب">
+            <div class="cover-text-overlay">
+              <div class="cover-top-badge">حكاية وتلوين</div>
+              <h1 class="cover-main-title" id="previewCoverTitle">الأميرة مريم<br><span>والقلعة السحرية</span></h1>
+              <div class="cover-author-tag">مغامرة مصورة للبطلة: <span id="previewCoverChildName">مريم</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- PAGE 2: DEDICATION -->
+        <article class="a4-page book-dedication-page">
+          <div class="dedication-box">
+            <div class="dedication-crown">👑</div>
+            <h2>إهداء خاص</h2>
+            <div class="dedication-divider">❦ ❦ ❦</div>
+            <p class="dedication-text">
+              إلى طفلتنا الحبيبة <strong id="previewDedicationName">مريم</strong>،<br>
+              صاحبة الابتسامة الرقيقة والعيون الذكية..<br>
+              هذا الكتاب صُنع خصيصاً من أجلكِ لتلوني مغامرتكِ بيدكِ الجميلة.<br>
+              حلّقي في عالم السحر، واجعلي صفحات هذه القلعة تنبض بألوانكِ الرائعة!
+            </p>
+            <div class="dedication-signature">
+              مع كل الحب،<br>
+              <strong>بابا وماما ❤️</strong>
+            </div>
+          </div>
+        </article>
+
+        <!-- SPREAD 1: SCENE 1 (School) -->
+        <!-- Right Page: Color Illustration + Story Text -->
+        <article class="a4-page story-narrative-page">
+          <div class="page-content-wrapper">
+            <div class="story-illustration-frame">
+              <img src="assets/mariam/mariam_school_color_1792360059645.jpg" alt="المشهد الأول">
+            </div>
+            <div class="story-text-card">
+              <div class="scene-chapter-badge">المشهد الأول</div>
+              <h3 class="scene-title">في الطريق إلى المدرسة</h3>
+              <p class="scene-story-body">
+                أَشْرَقَتْ شَمْسُ الصَّبَاحِ الدَّافِئَةِ، وَاسْتَعَدَّتْ بَطَلَتُنَا «مَرْيَمُ» لِيَوْمٍ جَدِيدٍ وَمُمَيَّزٍ. ارْتَدَتْ قَمِيصَهَا الأَبْيَضَ وَوِشَاحَهَا الأَحْمَرَ الجَمِيلَ، وَحَمَلَتْ حَقِيبَتَهَا التُّرْكُوازِيَّةَ المُفَضَّلَةَ، وَسَارَتْ تَبْتَسِمُ لِلأَشْجَارِ وَالأَزْهَارِ فِي طَرِيقِهَا.. وَهِيَ لَا تَعْلَمُ أَنَّ هَذَا اليَوْمَ يُخَبِّئُ لَهَا مُفَاجَأَةً سِحْرِيَّةً!
+              </p>
+            </div>
+            <div class="page-footer-number">صفحة 3</div>
+          </div>
+        </article>
+
+        <!-- Left Page: Matching Clean Coloring Page -->
+        <article class="a4-page story-coloring-page">
+          <div class="page-content-wrapper">
+            <div class="coloring-header-banner">
+              <span>🖍️ لَوِّنِي مَعَ مَرْيَمَ: فِي الطَّرِيقِ إِلَى المَدْرَسَةِ</span>
+            </div>
+            <div class="coloring-art-frame">
+              <img id="pageColoring1" src="assets/mariam/mariam_school_bw_1792360100516.jpg" alt="صفحة التلوين الأولى">
+            </div>
+            <div class="coloring-tip">
+              <span>💡 نصيحة التلوين: استخدمي ألوانكِ المفضلة لحقيبة مريم والزهور الجميلة!</span>
+            </div>
+            <div class="page-footer-number">صفحة 4</div>
+          </div>
+        </article>
+
+        <!-- SPREAD 2: SCENE 2 (Magic Crown) -->
+        <article class="a4-page story-narrative-page">
+          <div class="page-content-wrapper">
+            <div class="story-illustration-frame">
+              <img src="assets/mariam/mariam_crown_color_1792360148272.jpg" alt="المشهد الثاني">
+            </div>
+            <div class="story-text-card">
+              <div class="scene-chapter-badge">المشهد الثاني</div>
+              <h3 class="scene-title">التاج السحري المتلألئ</h3>
+              <p class="scene-story-body">
+                وَفِي حَدِيقَةِ الأَزْهَارِ العَجِيبَةِ، لَمَحَتْ مَرْيَمُ بَرِيقاً ذَهَبِيّاً يَتَلَأْلَأُ بَيْنَ الفَرَاشَاتِ المُلَوَّنَةِ! اقْتَرَبَتْ بِهُدُوءٍ وَدَهْشَةٍ، فَوَجَدَتْ تَاجاً مَلَكِيّاً سِحْرِيّاً يَسْتَقِرُّ فَوْقَ وِسَادَةٍ مُخْمَلِيَّةٍ نَاعِمَةٍ. عِنْدَمَا لَمَسَتْهُ بِيَدِهَا، تَحَوَّلَتْ مَلَابِسُهَا إِلَى فُسْتَانِ أَمِيرَةٍ وَرْدِيٍّ فَاتِنٍ!
+              </p>
+            </div>
+            <div class="page-footer-number">صفحة 5</div>
+          </div>
+        </article>
+
+        <!-- Left Page: Matching Clean Coloring Page -->
+        <article class="a4-page story-coloring-page">
+          <div class="page-content-wrapper">
+            <div class="coloring-header-banner">
+              <span>🖍️ لَوِّنِي مَعَ مَرْيَمَ: التَّاجُ السِّحْرِيُّ</span>
+            </div>
+            <div class="coloring-art-frame">
+              <img id="pageColoring2" src="assets/mariam/mariam_crown_bw_1792360195397.jpg" alt="صفحة التلوين الثانية">
+            </div>
+            <div class="coloring-tip">
+              <span>💡 نصيحة التلوين: لوني التاج باللون الذهبي البراق وفستان الأميرة بالوردي الناعم!</span>
+            </div>
+            <div class="page-footer-number">صفحة 6</div>
+          </div>
+        </article>
+
+        <!-- SPREAD 3: SCENE 3 (Arrival at the Castle) -->
+        <article class="a4-page story-narrative-page">
+          <div class="page-content-wrapper">
+            <div class="story-illustration-frame">
+              <img src="assets/mariam/mariam_cover_color_1792360002072.jpg" alt="المشهد الثالث">
+            </div>
+            <div class="story-text-card">
+              <div class="scene-chapter-badge">المشهد الثالث</div>
+              <h3 class="scene-title">الوصول إلى القلعة السحرية</h3>
+              <p class="scene-story-body">
+                وَقَفَتِ الأَمِيرَةُ مَرْيَمُ تَنْظُرُ بِانْبِهَارٍ إِلَى القَلْعَةِ السِّحْرِيَّةِ الوَرْدِيَّةِ ذَاتِ الأَبْرَاجِ العَاجِيَّةِ العَالِيَةِ. كَانَتِ الأَبْوَابُ مَفْتُوحَةً لِتَسْتَقْبِلَهَا كَأَمِيرَةٍ حَقِيقِيَّةٍ بِمَحَبَّةٍ وَسَلَامٍ، وَتُعْلِنَ بَدْءَ أَعْظَمِ مُغَامَرَةٍ فِي مَمْلَكَةِ الأَحْلَامِ!
+              </p>
+            </div>
+            <div class="page-footer-number">صفحة 7</div>
+          </div>
+        </article>
+
+        <!-- Left Page: Matching Clean Coloring Page -->
+        <article class="a4-page story-coloring-page">
+          <div class="page-content-wrapper">
+            <div class="coloring-header-banner">
+              <span>🖍️ لَوِّنِي مَعَ مَرْيَمَ: القَلْعَةُ السِّحْرِيَّةُ</span>
+            </div>
+            <div class="coloring-art-frame">
+              <img id="pageColoring3" src="assets/mariam/mariam_cover_bw_1792360032493.jpg" alt="صفحة التلوين الثالثة">
+            </div>
+            <div class="coloring-tip">
+              <span>💡 نصيحة التلوين: أبدعي في تلوين أبراج القلعة والنجوم المحيطة بالسماء!</span>
+            </div>
+            <div class="page-footer-number">صفحة 8</div>
+          </div>
+        </article>
+
+        <!-- PAGE: MAZE ACTIVITY -->
+        <article class="a4-page activity-print-page">
+          <div class="page-content-wrapper">
+            <div class="activity-page-header">
+              <h2>🌀 سَاعِدِي مَرْيَمَ لِلْوُصُولِ إِلَى القَلْعَةِ السِّحْرِيَّةِ</h2>
+              <p>تَتَبَّعِي المَسَارَ الصَّحِيحَ بَيْنَ المَمَرَّاتِ دُونَ أَنْ تَقَعِي فِي طَرِيقٍ مَسْدُودٍ!</p>
+            </div>
+            <div class="activity-print-frame">
+              <img id="printMazeImg" src="" alt="متاهة مريم">
+            </div>
+            <div class="page-footer-number">صفحة 9</div>
+          </div>
+        </article>
+
+        <!-- PAGE: CERTIFICATE -->
+        <article class="a4-page certificate-print-page">
+          <div class="page-content-wrapper">
+            <!-- Mirrored Certificate for Print -->
+            <div class="cert-border">
+              <div class="cert-inner-border">
+                <div class="cert-ribbon">🏆</div>
+                <h2 class="cert-title">شهادة فنانة القصة المتميزة</h2>
+                <p class="cert-subtitle">تُمنح هذه الشهادة بكل فخر للبطلة المبدعة</p>
+                <div class="cert-child-name" id="printCertChildName">الأميرة مريم</div>
+                <p class="cert-body">
+                  تقديراً لإبداعها وخيالها الرائع في قراءة وتلوين مشاهد حكاية<br>
+                  <strong id="printCertBookTitle">«الأميرة مريم والقلعة السحرية»</strong><br>
+                  وإتمام جميع الأنشطة والمغامرات بنجاح باهر!
+                </p>
+                <div class="cert-stars">⭐⭐⭐⭐⭐</div>
+                <div class="cert-signatures">
+                  <div class="sig-col">
+                    <span class="sig-line"></span>
+                    <span class="sig-label">توقيع البطلة</span>
+                  </div>
+                  <div class="cert-seal">
+                    <div class="seal-circle">ختم الإبداع الملكي</div>
+                  </div>
+                  <div class="sig-col">
+                    <span class="sig-line">20 أكتوبر 2026</span>
+                    <span class="sig-label">تاريخ الإنجاز</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="page-footer-number">صفحة 10 (الختام)</div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+  </main>
+
+
+
+  <!-- ======================================================== -->
+  <!-- STORY MANAGER MODAL (3-in-1 System) -->
+  <!-- ======================================================== -->
+  <div id="storyManagerModal" class="modal-overlay" style="display:none;">
+    <div class="modal-container">
+
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">📚</span>
+          <div>
+            <h2 id="modalTitle">إدارة القصص</h2>
+            <p id="modalSubtitle">اختر ما تريد إضافته أو إنشاءه</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeModalBtn">✕</button>
+      </div>
+
+      <!-- Mode Switcher Tabs -->
+      <div class="modal-tabs">
+        <button class="modal-tab-btn active" data-modal-tab="tab-add-scene">
+          <span>➕</span> إضافة مشهد
+        </button>
+        <button class="modal-tab-btn" data-modal-tab="tab-new-book">
+          <span>📖</span> كتاب طفل جديد
+        </button>
+        <button class="modal-tab-btn" data-modal-tab="tab-templates">
+          <span>✨</span> قوالب قصص جاهزة
+        </button>
+      </div>
+
+      <!-- ---- PANE 1: ADD SCENE TO CURRENT BOOK ---- -->
+      <div id="tab-add-scene" class="modal-pane active">
+        <div class="modal-pane-header">
+          <p>أضف مشهداً جديداً لكتاب <strong id="currentBookNameDisplay">مريم</strong> الحالي مع صورة ملونة وصورة تلوين.</p>
+        </div>
+        <div class="modal-form-grid">
+          <div class="mform-group">
+            <label>رقم المشهد (ترتيب الظهور):</label>
+            <input type="number" id="newSceneNumber" value="5" min="1" max="50">
+          </div>
+          <div class="mform-group">
+            <label>عنوان المشهد بالعربية:</label>
+            <input type="text" id="newSceneTitle" placeholder="مثال: مريم تلتقي التنين الودود">
+          </div>
+          <div class="mform-group full">
+            <label>نص القصة العربية (يُطبع في الكتاب):</label>
+            <textarea id="newSceneStory" rows="4" placeholder="اكتب هنا نص المشهد بالعربية بأسلوب الحكاية الفصيحة المبسطة..."></textarea>
+          </div>
+          <div class="mform-group">
+            <label>صورة المشهد الملونة:</label>
+            <div class="img-upload-box" id="colorImgBox">
+              <img id="colorImgPreview" src="" style="display:none;">
+              <div class="upload-placeholder" id="colorImgPlaceholder">🖼️<br><span>ارفع صورة الرسم الملون</span></div>
+              <input type="file" id="colorImgInput" accept="image/*" style="display:none;">
+            </div>
+          </div>
+          <div class="mform-group">
+            <label>صفحة التلوين (أبيض وأسود):
+              <small style="color:var(--accent-gold)"> — أو اتركها فارغة للتوليد الحسابي التلقائي</small>
+            </label>
+            <div class="img-upload-box" id="bwImgBox">
+              <img id="bwImgPreview" src="" style="display:none;">
+              <div class="upload-placeholder" id="bwImgPlaceholder">🖍️<br><span>ارفع صفحة التلوين أو اتركها فارغة</span></div>
+              <input type="file" id="bwImgInput" accept="image/*" style="display:none;">
+            </div>
+          </div>
+          <div class="mform-group full">
+            <label>برومبت المشهد (بالإنجليزية لـ Midjourney/Flux):</label>
+            <textarea id="newScenePromptEn" rows="3" placeholder="أدخل برومبت الصورة بالإنجليزية هنا لحفظه في الملف..."></textarea>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="addSceneConfirmBtn" class="btn btn-primary">
+            <span>✅</span> إضافة المشهد للكتاب
+          </button>
+          <button id="autoGenerateLineart" class="btn btn-secondary">
+            <span>⚡</span> توليد صفحة التلوين حسابياً من الصورة الملونة
+          </button>
+        </div>
+      </div>
+
+      <!-- ---- PANE 2: NEW CHILD BOOK ---- -->
+      <div id="tab-new-book" class="modal-pane">
+        <div class="modal-pane-header">
+          <p>أنشئ كتاباً جديداً كاملاً بهوية طفل مختلف. كل بياناته ستُحفظ كمشروع منفصل تماماً.</p>
+        </div>
+        <div class="modal-form-grid">
+          <div class="mform-group">
+            <label>اسم الطفل (البطل أو البطلة):</label>
+            <input type="text" id="nbChildName" placeholder="مثال: يوسف">
+          </div>
+          <div class="mform-group">
+            <label>العمر التقريبي:</label>
+            <input type="text" id="nbChildAge" placeholder="مثال: 6 سنوات">
+          </div>
+          <div class="mform-group full">
+            <label>عنوان الكتاب المقترح:</label>
+            <input type="text" id="nbBookTitle" placeholder="مثال: يوسف ورحلة الفضاء السحرية">
+          </div>
+          <div class="mform-group">
+            <label>ثيم / موضوع القصة:</label>
+            <select id="nbTheme">
+              <option value="fantasy">🏰 مغامرة ملكية وسحر</option>
+              <option value="space">🚀 الفضاء والكواكب</option>
+              <option value="ocean">🌊 تحت البحر والمحيط</option>
+              <option value="jungle">🦁 غابة الحيوانات العجيبة</option>
+              <option value="islamic">☪️ قصة إسلامية وأخلاقية</option>
+              <option value="school">🎒 مغامرات المدرسة والأصدقاء</option>
+              <option value="dinosaur">🦕 عالم الديناصورات</option>
+              <option value="superhero">🦸 الطفل الخارق</option>
+              <option value="custom">✏️ ثيم مخصص (أكتبه أنا)</option>
+            </select>
+          </div>
+          <div class="mform-group" id="nbCustomThemeGroup" style="display:none;">
+            <label>الثيم المخصص:</label>
+            <input type="text" id="nbCustomTheme" placeholder="اكتب موضوع القصة هنا...">
+          </div>
+          <div class="mform-group">
+            <label>الأسلوب الفني للرسوم:</label>
+            <select id="nbArtStyle">
+              <option value="pixar_3d">رسوم ثلاثية الأبعاد (Disney / Pixar)</option>
+              <option value="watercolor">ألوان مائية كلاسيكية</option>
+              <option value="cartoon_2d">أنيمي كرتوني ناعم</option>
+              <option value="chalk">لوح طباشير ملون</option>
+            </select>
+          </div>
+          <div class="mform-group">
+            <label>عدد مشاهد القصة:</label>
+            <select id="nbScenesCount">
+              <option value="4">4 مشاهد (كتاب صغير)</option>
+              <option value="6" selected>6 مشاهد (كتاب متوسط)</option>
+              <option value="8">8 مشاهد (كتاب كبير)</option>
+              <option value="12">12 مشهداً (كتاب شامل)</option>
+            </select>
+          </div>
+          <div class="mform-group full">
+            <label>الملامح الجسدية المميزة (بالعربية للـ Identity Anchor):</label>
+            <textarea id="nbFeatures" rows="3" placeholder="صِف ملامح الطفل التي تريد المحافظة عليها في كل مشهد: شكل الوجه، العيون، الشعر، البشرة..."></textarea>
+          </div>
+          <div class="mform-group full">
+            <label>وصف الملابس الثابتة في الكتاب:</label>
+            <input type="text" id="nbOutfit" placeholder="مثال: بدلة فضاء بيضاء مع خوذة زرقاء مضيئة">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="createNewBookBtn" class="btn btn-primary">
+            <span>🚀</span> إنشاء الكتاب الجديد
+          </button>
+          <button id="generatePromptsBtn" class="btn btn-secondary">
+            <span>📋</span> توليد وعرض البرومبتات الكاملة للمشاهد
+          </button>
+        </div>
+      </div>
+
+      <!-- ---- PANE 3: STORY TEMPLATES LIBRARY ---- -->
+      <div id="tab-templates" class="modal-pane">
+        <div class="modal-pane-header">
+          <p>قوالب قصص جاهزة ومجربة — اختر أحدها ليُملأ تلقائياً بالبيانات والبرومبتات الكاملة. ما عليك إلا إضافة صور الطفل.</p>
+        </div>
+
+        <div class="templates-search-row">
+          <input type="text" id="templateSearch" placeholder="🔍 ابحث في القوالب... (أميرة، فضاء، إسلامية...)">
+          <select id="templateCategoryFilter">
+            <option value="all">جميع الأنواع</option>
+            <option value="fantasy">🏰 الخيال والسحر</option>
+            <option value="space">🚀 الفضاء</option>
+            <option value="ocean">🌊 البحر</option>
+            <option value="jungle">🦁 الغابة</option>
+            <option value="islamic">☪️ إسلامية أخلاقية</option>
+            <option value="educational">📚 تعليمية</option>
+          </select>
+        </div>
+
+        <div class="templates-grid" id="templatesGrid">
+          <!-- JS populated -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Generated Prompts Modal (for new book) -->
+  <div id="promptsModal" class="modal-overlay" style="display:none;">
+    <div class="modal-container modal-container-wide">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">📋</span>
+          <div>
+            <h2>البرومبتات الكاملة للكتاب الجديد</h2>
+            <p>انسخ كل برومبت وضعه في Midjourney أو Flux مع صورة الطفل</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closePromptsModalBtn">✕</button>
+      </div>
+      <div id="promptsOutput" class="prompts-output-area">
+        <!-- JS filled -->
+      </div>
+      <div class="modal-actions">
+        <button id="copyAllPromptsBtn" class="btn btn-primary"><span>📋</span> نسخ جميع البرومبتات دفعة واحدة</button>
+        <button id="closePromptsModalBtn2" class="btn btn-outline">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toastMessage" class="toast">تم النسخ بنجاح!</div>
+
+  <!-- Scripts -->
+  <script src="js/engine/lineart.js"></script>
+  <script src="js/engine/maze.js"></script>
+  <script src="js/engine/activities.js"></script>
+  <script src="js/data/sample_books.js"></script>
+  <script src="js/data/story_templates.js"></script>
+  <script src="js/ui/story_manager.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
