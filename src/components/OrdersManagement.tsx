@@ -20,7 +20,8 @@ import {
   Share2,
   Banknote,
   Bell,
-  Phone
+  Phone,
+  RotateCcw
 } from 'lucide-react';
 import { SalesOrder, Customer, UserProfile, OrderStatus, DeliveryStatus, OrderType, Permit, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';
@@ -116,6 +117,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   // WhatsApp Share Modal
   const [whatsAppModalOrder, setWhatsAppModalOrder] = useState<SalesOrder | null>(null);
   const [markAsSent, setMarkAsSent] = useState(true);
+  const [customWhatsAppText, setCustomWhatsAppText] = useState<string>('');
 
   // Direct Payment Modal — زر "تم السداد" يسجّل باسم الموظف عشان يتحاسب عليه آخر اليوم
   const [paymentModalOrder, setPaymentModalOrder] = useState<SalesOrder | null>(null);
@@ -225,15 +227,24 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   });
 
   const applyWaPreset = (preset: 'confirm_only' | 'code_only' | 'payment_only' | 'all') => {
-    setWaInclude(
+    const nextInclude = 
       preset === 'confirm_only' ? { confirmAndVisit: true, permits: true, paymentDemand: false, bankAccounts: false, permitCodes: false }
       : preset === 'code_only' ? { confirmAndVisit: false, permits: false, paymentDemand: false, bankAccounts: false, permitCodes: true }
       : preset === 'payment_only' ? { confirmAndVisit: false, permits: false, paymentDemand: true, bankAccounts: true, permitCodes: false }
-      : { confirmAndVisit: true, permits: true, paymentDemand: true, bankAccounts: true, permitCodes: true }
-    );
+      : { confirmAndVisit: true, permits: true, paymentDemand: true, bankAccounts: true, permitCodes: true };
+    setWaInclude(nextInclude);
+    if (whatsAppModalOrder) {
+      setCustomWhatsAppText(buildWhatsAppMessage(whatsAppModalOrder, nextInclude));
+    }
+  };
+
+  const handleOpenWhatsAppModal = (order: SalesOrder) => {
+    setWhatsAppModalOrder(order);
+    setCustomWhatsAppText(buildWhatsAppMessage(order));
   };
 
   const buildWhatsAppMessage = (order: SalesOrder, include = waInclude) => {
+    const tmpl = DataService.getMessageTemplates();
     const isFullyPaid = order.paidAmount >= order.totalAmount && order.totalAmount > 0;
     const sym = currencySymbol(getOrderCurrency(order));
     const accounts = DataService.getFinancialAccounts().filter(a => a.isActive);
@@ -246,31 +257,43 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     const transfers = DataService.getSmsMessages().filter(
       m => m.matchedOrderId === order.id && (m.parsedAmount || 0) > 0
     );
+    const transferLines = transfers.map(t =>
+      `• تم استلام تحويل بقيمة ${t.parsedAmount} ${currencySymbol(providerCurrency(t.parsedProvider || 'other'))} — ${providerLabel(t.parsedProvider || 'other')}${t.parsedReferenceId ? ` — رقم التحويل: ${t.parsedReferenceId}` : ''}`
+    ).join('\n');
 
-    // رسالة مُخصصة حسب الأجزاء المختارة
+    const replaceVars = (text: string, extra: Record<string, string> = {}) => {
+      const vars: Record<string, string> = {
+        '{customerName}': order.customerName,
+        '{orderNumber}': String(order.orderNumber),
+        '{targetDate}': order.targetDate,
+        '{targetTime}': order.targetTime,
+        '{permitsCount}': String(order.permitsCount),
+        '{permitsLine}': include.permits ? `\n${permitsLine}` : '',
+        '{totalAmount}': String(order.totalAmount),
+        '{paidAmount}': String(order.paidAmount),
+        '{remainingAmount}': String(order.remainingAmount),
+        '{currency}': sym,
+        '{companyName}': DataService.getCompanySettings().companyNameAr || 'مؤسسة حجز تصاريح الروضة',
+        '{transfers}': transferLines ? `\n${transferLines}` : '',
+        ...extra,
+      };
+      let res = text;
+      for (const [k, v] of Object.entries(vars)) {
+        res = res.split(k).join(v);
+      }
+      return res;
+    };
+
+    // رسالة مُخصصة حسب الأجزاء المختارة والقوالب المعتمدة
     const sections: string[] = [];
 
     if (include.confirmAndVisit) {
-      sections.push(`السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،
-نود إبلاغكم بأنه تم تجهيز طلب تصريح زيارة الروضة الشريفة بنجاح 🕌✨
-
-• رقم الطلب: #${order.orderNumber}
-• تاريخ الزيارة: ${order.targetDate}
-• وقت الفترة: ${order.targetTime}${include.permits ? `\n${permitsLine}` : ''}
-
-يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.`);
+      sections.push(replaceVars(tmpl.confirmationHeader));
     }
 
     if (include.paymentDemand) {
-      const transferLines = transfers.map(t =>
-        `• تم استلام تحويل بقيمة ${t.parsedAmount} ${currencySymbol(providerCurrency(t.parsedProvider || 'other'))} — ${providerLabel(t.parsedProvider || 'other')}${t.parsedReferenceId ? ` — رقم التحويل: ${t.parsedReferenceId}` : ''}`
-      ).join('\n');
-
-      sections.push(`${isFullyPaid ? '✅ تم تأكيد استلام كامل المبلغ' : 'بانتظار سداد المبلغ المتبقي'}:
-
-• إجمالي المبلغ: ${order.totalAmount} ${sym}
-• المبلغ المدفوع: ${order.paidAmount} ${sym}${isFullyPaid ? '' : `\n• المبلغ المتبقي: ${order.remainingAmount} ${sym}`}
-${transferLines || (isFullyPaid ? '' : 'بانتظار وصول التحويل لتأكيد السداد وإصدار التصريح.')}`.trim());
+      const demandTmpl = isFullyPaid ? tmpl.paymentDemandPaid : tmpl.paymentDemandPending;
+      sections.push(replaceVars(demandTmpl).trim());
     }
 
     if (include.bankAccounts && !isFullyPaid) {
@@ -293,15 +316,21 @@ ${accountsList}`);
         }
         return text;
       }).join('\n');
-      sections.push(`تصاريحكم${claimed.length ? ` (${claimed.length})` : ''}:
-${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكود فور اعتمادها.'}`);
+
+      const countStr = claimed.length ? ` (${claimed.length})` : '';
+      const listStr = codes || 'جارٍ إصدار التصاريح وستصلكم صور الكود فور اعتمادها.';
+      sections.push(replaceVars(tmpl.permitCodesHeader, {
+        '{permitsCount}': countStr,
+        '{permitCodesList}': listStr,
+      }));
     }
 
     if (sections.length === 0) {
       return `السلام عليكم ورحمة الله وبركاته يا ${order.customerName}،\nنتواصل معكم بخصوص طلب تصريح زيارة الروضة الشريفة رقم #${order.orderNumber}.`;
     }
 
-    return sections.join('\n\n') + '\n\nتقبل الله زيارتكم وطاعتكم.';
+    const footer = tmpl.footerText ? `\n\n${replaceVars(tmpl.footerText)}` : '';
+    return sections.join('\n\n') + footer;
   };
 
   const handleOpenWhatsApp = (order: SalesOrder) => {
@@ -316,8 +345,9 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
     }
 
     const cleanPhone = (order.customerWhatsapp || '').replace(/[^0-9]/g, '');
+    const messageToSend = customWhatsAppText || buildWhatsAppMessage(order);
     window.open(
-      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(buildWhatsAppMessage(order))}`,
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageToSend)}`,
       '_blank',
       'noopener'
     );
@@ -332,7 +362,8 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
 
   const handleCopyWhatsAppText = async (order: SalesOrder) => {
     try {
-      await navigator.clipboard.writeText(buildWhatsAppMessage(order));
+      const messageToSend = customWhatsAppText || buildWhatsAppMessage(order);
+      await navigator.clipboard.writeText(messageToSend);
       toast.success('تم نسخ نص الرسالة إلى الحافظة.');
       if (markAsSent && order.deliveryStatus !== 'sent') {
         DataService.updateDeliveryStatus(order.id, 'sent');
@@ -399,9 +430,37 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
   const handleDownloadPermitImage = (imageUrl: string, permitCode: string) =>
     imageActions.download(imageUrl, `${permitCode}.png`);
 
-  // مشاركة مباشرة عبر زر المشاركة الأصلي بالجوال (يفتح قائمة واتساب بالصورة مرفقة ومعها كامل نص الرسالة كـ Caption)
+  // إرسال كود وصورة التصريح لرقم العميل مباشرة دون البحث اليدوي في جهات الاتصال
+  const handleSendDirectToCustomer = async (imageUrl: string, permitCode: string) => {
+    if (!whatsAppModalOrder) return;
+    const cleanPhone = (whatsAppModalOrder.customerWhatsapp || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone) {
+      toast.warning('لا يوجد رقم واتساب مسجل لهذا العميل في الطلب.');
+      return;
+    }
+
+    // 1. نسخ صورة التصريح إلى الحافظة تلقائياً للكمبيوتر أو الأجهزة الداعمة
+    await imageActions.copyOrDownload(imageUrl, `تصريح_${permitCode}.png`);
+
+    // 2. استخدام نص الرسالة المعدل حالياً بالنافذة
+    const textToSend = customWhatsAppText || buildWhatsAppMessage(whatsAppModalOrder);
+
+    // 3. فتح شات رقم العميل مباشرة في واتساب
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(textToSend)}`, '_blank', 'noopener');
+
+    // 4. تحديث موقف الإرسال إلى "تم إرساله للعميل"
+    if (markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
+      DataService.updateDeliveryStatus(whatsAppModalOrder.id, 'sent');
+      refreshData();
+      toast.success('تم فتح واتساب العميل مباشرة وتحديث موقف الإرسال إلى «تم إرساله للعميل».');
+    } else {
+      toast.success('تم فتح محادثة العميل مباشرة على رقمه المسجل.');
+    }
+  };
+
+  // مشاركة عبر قائمة مشاركة التطبيقات بالجوال
   const handleSharePermitImage = async (imageUrl: string, permitCode: string) => {
-    const fullText = whatsAppModalOrder ? buildWhatsAppMessage(whatsAppModalOrder) : `تصريح رقم ${permitCode}`;
+    const fullText = customWhatsAppText || (whatsAppModalOrder ? buildWhatsAppMessage(whatsAppModalOrder) : `تصريح رقم ${permitCode}`);
     const res = await imageActions.shareOrDownload(imageUrl, `تصريح_${permitCode}.png`, {
       title: `تصريح زيارة الروضة الشريفة ${permitCode}`,
       text: fullText,
@@ -978,7 +1037,7 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                             <>
                               {/* WhatsApp Share Button */}
                               <button
-                                onClick={() => setWhatsAppModalOrder(order)}
+                                onClick={() => handleOpenWhatsAppModal(order)}
                                 className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all shadow-sm"
                                 title="إرسال رسالة وتصريح عبر الواتساب"
                               >
@@ -1352,7 +1411,14 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-emerald-700">
                 <MessageCircle className="w-5 h-5" />
-                <h3 className="text-base font-bold text-slate-900">إرسال للعميل عبر الواتساب</h3>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">إرسال للعميل عبر الواتساب</h3>
+                  <div className="text-[11px] font-mono text-emerald-700 font-bold flex items-center gap-1.5 mt-0.5">
+                    <span>{whatsAppModalOrder.customerName}</span>
+                    <span>•</span>
+                    <span dir="ltr">{whatsAppModalOrder.customerWhatsapp}</span>
+                  </div>
+                </div>
               </div>
               <button onClick={() => setWhatsAppModalOrder(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
@@ -1404,7 +1470,13 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setWaInclude(prev => ({ ...prev, [key]: !prev[key] }))}
+                  onClick={() => {
+                    const next = { ...waInclude, [key]: !waInclude[key] };
+                    setWaInclude(next);
+                    if (whatsAppModalOrder) {
+                      setCustomWhatsAppText(buildWhatsAppMessage(whatsAppModalOrder, next));
+                    }
+                  }}
                   className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold transition-all border ${
                     waInclude[key]
                       ? 'bg-emerald-600 text-white border-emerald-600'
@@ -1416,11 +1488,32 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
               ))}
             </div>
 
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 space-y-1.5 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
-              {buildWhatsAppMessage(whatsAppModalOrder)}
+            {/* صندوق نص الرسالة مع إمكانية التعديل المباشر وإعادة الضبط من القالب */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-[11px] font-bold text-slate-700">
+                  نص الرسالة (يمكنك تعديل أي كلمة هنا قبل الإرسال):
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setCustomWhatsAppText(buildWhatsAppMessage(whatsAppModalOrder))}
+                  className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 transition-colors"
+                  title="إعادة توليد النص من القالب المعتمد في الإعدادات"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>إعادة ضبط من القالب</span>
+                </button>
+              </div>
+              <textarea
+                rows={5}
+                value={customWhatsAppText}
+                onChange={(e) => setCustomWhatsAppText(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-mono text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-600 transition-all leading-relaxed"
+                dir="rtl"
+              />
             </div>
 
-            {/* عرض صور التصاريح المخصصة مع أزرار نسخ الصورة للواتساب والتحميل */}
+            {/* عرض صور التصاريح المخصصة مع أزرار الإرسال المباشر والنسخ والتحميل */}
             {(() => {
               const direct = (whatsAppModalOrder.assignedPermitIds || [])
                 .map(id => permitById[id])
@@ -1441,7 +1534,7 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                     <span className="text-[10px] text-emerald-700 font-bold">جاهزة للإرسال</span>
                   </div>
 
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
                     {claimed.map(p => (
                       <div key={p.id} className="flex items-center justify-between gap-2 bg-white p-2 rounded-xl border border-emerald-100 shadow-xs">
                         <div className="flex items-center gap-2">
@@ -1463,17 +1556,26 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleSharePermitImage(p.imageUrl, p.permitCode)}
+                                onClick={() => handleSendDirectToCustomer(p.imageUrl, p.permitCode)}
                                 className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition-all min-h-[36px]"
-                                title="إرسال صورة التصريح مع كامل نص الرسالة كـ Caption للواتساب (للجوال)"
+                                title="فتح محادثة رقم العميل في واتساب فوراً دون الحاجة للبحث عنه، مع كامل الرسالة ونسخ الصورة تلقائياً للحافظة"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>إرسال لرقم العميل مباشرة</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSharePermitImage(p.imageUrl, p.permitCode)}
+                                className="px-2.5 py-2 rounded-xl bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-800 text-[11px] font-bold flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
+                                title="مشاركة ملف الصورة عبر قائمة تطبيقات النظام"
                               >
                                 <Share2 className="w-3.5 h-3.5" />
-                                <span>إرسال الصورة + النص</span>
+                                <span>مشاركة كملف</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleCopyPermitImage(p.imageUrl, p.permitCode)}
-                                className="px-2.5 py-2 rounded-lg bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-[11px] font-bold hidden sm:flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
+                                className="px-2.5 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[11px] font-bold hidden sm:flex items-center gap-1 shadow-xs transition-all min-h-[36px]"
                                 title="نسخ صورة التصريح للحافظة (للصقها بالواتساب Ctrl+V)"
                               >
                                 <Copy className="w-3.5 h-3.5" />
@@ -1503,7 +1605,7 @@ ${codes || 'جارٍ إصدار التصاريح وستصلكم صور الكو�
                   </div>
 
                   <p className="text-[10px] text-emerald-800 leading-relaxed bg-white/70 p-2 rounded-lg border border-emerald-200">
-                    💡 <strong>طريقة الإرسال:</strong> على الجوال اضغط <strong>«إرسال»</strong> لتفتح قائمة المشاركة وتختار واتساب مباشرة. على الكمبيوتر اضغط <strong>«نسخ»</strong> ثم في محادثة الواتساب اضغط <strong>(Ctrl + V)</strong> للصق صورة التصريح.
+                    💡 <strong>طريقة الإرسال المباشر:</strong> اضغط <strong>«إرسال لرقم العميل مباشرة»</strong> ليفتح محادثة رقم العميل في واتساب فوراً ومعه الرسالة كاملة، وتُنسخ صورة التصريح تلقائياً في الحافظة لتلصقها في ثانية (Ctrl + V على الكمبيوتر أو لصق).
                   </p>
                 </div>
               );

@@ -55,6 +55,14 @@ export interface FinancialAccount {
   createdAt: string;
 }
 
+export interface MessageTemplates {
+  confirmationHeader: string;
+  paymentDemandPaid: string;
+  paymentDemandPending: string;
+  permitCodesHeader: string;
+  footerText: string;
+}
+
 export interface CompanySettings {
   id: string;
   companyNameAr: string;

@@ -6,6 +6,7 @@ import {
   UserProfile,
   FinancialAccount,
   CompanySettings,
+  MessageTemplates,
   AuditLog,
   AccountProvider,
   CurrencyCode,
@@ -101,6 +102,37 @@ const STORAGE_KEYS = {
   DAILY_SCENARIO: 'rawdah_daily_scenario',
   LAST_SYNC: 'rawdah_last_cloud_sync',
   PERMIT_PRICE: 'rawdah_default_permit_price',
+  TEMPLATES: 'rawdah_message_templates',
+};
+
+export const initialMessageTemplates: MessageTemplates = {
+  confirmationHeader: `السلام عليكم ورحمة الله وبركاته يا {customerName}،
+نود إبلاغكم بأنه تم تجهيز طلب تصريح زيارة الروضة الشريفة بنجاح 🕌✨
+
+• رقم الطلب: #{orderNumber}
+• تاريخ الزيارة: {targetDate}
+• وقت الفترة: {targetTime}{permitsLine}
+
+يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.`,
+
+  paymentDemandPaid: `✅ تم تأكيد استلام كامل المبلغ:
+
+• إجمالي المبلغ: {totalAmount} {currency}
+• المبلغ المدفوع: {paidAmount} {currency}
+{transfers}`,
+
+  paymentDemandPending: `بانتظار سداد المبلغ المتبقي:
+
+• إجمالي المبلغ: {totalAmount} {currency}
+• المبلغ المدفوع: {paidAmount} {currency}
+• المبلغ المتبقي: {remainingAmount} {currency}
+{transfers}
+بانتظار وصول التحويل لتأكيد السداد وإصدار التصريح.`,
+
+  permitCodesHeader: `تصاريحكم{permitsCount}:
+{permitCodesList}`,
+
+  footerText: `تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء في الروضة الشريفة.`,
 };
 
 function touchLastSync() {
@@ -448,6 +480,14 @@ export class DataService {
           defaultPermitPrice: price,
         };
         saveToStorage(STORAGE_KEYS.SETTINGS, mapped, true);
+      }
+
+      // 1.1 Sync Message Templates from audit_logs
+      if (logList && Array.isArray(logList)) {
+        const tmplLog = logList.find(l => l.entity_name === 'message_templates' && l.details?.templates);
+        if (tmplLog?.details?.templates) {
+          saveToStorage(STORAGE_KEYS.TEMPLATES, { ...initialMessageTemplates, ...tmplLog.details.templates }, true);
+        }
       }
 
       // 2. Sync Customers
@@ -1248,6 +1288,72 @@ export class DataService {
     }
 
     return { settings: updated, localSaved };
+  }
+
+  // --- Message Templates (قوالب رسائل الواتساب والتواصل) ---
+  static getMessageTemplates(): MessageTemplates {
+    const saved = loadFromStorage<Partial<MessageTemplates>>(STORAGE_KEYS.TEMPLATES, {});
+    return {
+      ...initialMessageTemplates,
+      ...saved,
+    };
+  }
+
+  static async syncMessageTemplatesFromCloud(): Promise<MessageTemplates> {
+    if (!getIsConfigured() || !getSupabase()) return this.getMessageTemplates();
+    try {
+      const { data, error } = await getSupabase()!
+        .from('audit_logs')
+        .select('details')
+        .eq('entity_name', 'message_templates')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0 && data[0]?.details?.templates) {
+        const cloudTemplates = data[0].details.templates;
+        const merged: MessageTemplates = {
+          ...initialMessageTemplates,
+          ...cloudTemplates,
+        };
+        saveToStorage(STORAGE_KEYS.TEMPLATES, merged, true);
+        return merged;
+      }
+    } catch (e) {
+      console.warn('Sync message templates warning:', e);
+    }
+    return this.getMessageTemplates();
+  }
+
+  static async updateMessageTemplates(templates: Partial<MessageTemplates>): Promise<MessageTemplates> {
+    const current = this.getMessageTemplates();
+    const updated: MessageTemplates = {
+      ...current,
+      ...templates,
+    };
+    saveToStorage(STORAGE_KEYS.TEMPLATES, updated);
+
+    // مزامنة مع السحابة عبر audit_logs
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        const user = this.getCurrentUser();
+        const validUuid = user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null;
+        await getSupabase()!.from('audit_logs').insert({
+          user_id: validUuid,
+          action_type: 'UPDATE_SETTINGS',
+          entity_name: 'message_templates',
+          entity_id: '00000000-0000-0000-0000-000000000001',
+          details: {
+            templates: updated,
+            updatedBy: user?.fullName || 'المدير العام',
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn('Could not push message templates to audit_logs:', err);
+      }
+    }
+
+    return updated;
   }
 
   // --- Financial Accounts ---
