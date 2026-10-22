@@ -239,8 +239,23 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   };
 
   const handleOpenWhatsAppModal = (order: SalesOrder) => {
+    // فحص إذا كان للطلب تصاريح مخصصة
+    const direct = (order.assignedPermitIds || []).map(id => permitById[id]).filter(Boolean) as Permit[];
+    const claimed = direct.length > 0 
+      ? direct 
+      : permits.filter(p => p.status === 'assigned' && p.assignedToCustomerId === order.customerId);
+    const hasPermits = claimed.length > 0;
+
+    const initialInclude = {
+      confirmAndVisit: true,
+      permits: true,
+      paymentDemand: false,
+      bankAccounts: false,
+      permitCodes: hasPermits, // مفعّل تلقائياً ليظهر كود التصريح ورابط الصورة فوراً
+    };
+    setWaInclude(initialInclude);
     setWhatsAppModalOrder(order);
-    setCustomWhatsAppText(buildWhatsAppMessage(order));
+    setCustomWhatsAppText(buildWhatsAppMessage(order, initialInclude));
   };
 
   const buildWhatsAppMessage = (order: SalesOrder, include = waInclude) => {
@@ -310,12 +325,12 @@ ${accountsList}`);
         ? direct
         : permits.filter(p => p.status === 'assigned' && p.assignedToCustomerId === order.customerId);
       const codes = claimed.map(p => {
-        let text = `• كود التصريح: ${p.permitCode} — ${p.slotDate} (${p.slotFormatted})`;
+        let text = `• كود التصريح: ${p.permitCode} — موعد الزيارة: ${p.slotDate} (${p.slotFormatted})`;
         if (p.imageUrl && p.imageUrl.startsWith('http')) {
-          text += `\n  🔗 رابط صورة التصريح: ${p.imageUrl}`;
+          text += `\n  🖼️ رابط صورة وباركود التصريح مباشرة:\n  ${p.imageUrl}`;
         }
         return text;
-      }).join('\n');
+      }).join('\n\n');
 
       const countStr = claimed.length ? ` (${claimed.length})` : '';
       const listStr = codes || 'جارٍ إصدار التصاريح وستصلكم صور الكود فور اعتمادها.';
@@ -430,8 +445,8 @@ ${accountsList}`);
   const handleDownloadPermitImage = (imageUrl: string, permitCode: string) =>
     imageActions.download(imageUrl, `${permitCode}.png`);
 
-  // إرسال كود وصورة التصريح لرقم العميل مباشرة دون البحث اليدوي في جهات الاتصال
-  const handleSendDirectToCustomer = async (imageUrl: string, permitCode: string) => {
+  // إرسال كود وصورة التصريح المحدد للعميل مباشرة في واتساب دون الحاجة لتسجيل رقمه أو البحث عنه
+  const handleSendPermitDirect = (p: Permit) => {
     if (!whatsAppModalOrder) return;
     const cleanPhone = (whatsAppModalOrder.customerWhatsapp || '').replace(/[^0-9]/g, '');
     if (!cleanPhone) {
@@ -439,22 +454,39 @@ ${accountsList}`);
       return;
     }
 
-    // 1. نسخ صورة التصريح إلى الحافظة تلقائياً للكمبيوتر أو الأجهزة الداعمة
-    await imageActions.copyOrDownload(imageUrl, `تصريح_${permitCode}.png`);
+    const imgText = (p.imageUrl && p.imageUrl.startsWith('http'))
+      ? `\n\n🖼️ رابط صورة وباركود التصريح مباشرة:\n${p.imageUrl}`
+      : '';
 
-    // 2. استخدام نص الرسالة المعدل حالياً بالنافذة
-    const textToSend = customWhatsAppText || buildWhatsAppMessage(whatsAppModalOrder);
+    const directMsg = `السلام عليكم ورحمة الله وبركاته يا ${whatsAppModalOrder.customerName}،
+نرسل لكم كود وصورة تصريح زيارة الروضة الشريفة المعتمد 🕌✨
 
-    // 3. فتح شات رقم العميل مباشرة في واتساب
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(textToSend)}`, '_blank', 'noopener');
+• رقم الطلب: #${whatsAppModalOrder.orderNumber}
+• كود التصريح: ${p.permitCode}
+• تاريخ الزيارة: ${p.slotDate}
+• وقت الفترة: ${p.slotFormatted}${imgText}
 
-    // 4. تحديث موقف الإرسال إلى "تم إرساله للعميل"
+يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.
+
+تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء.`;
+
+    // محاولة نسخ الصورة في صمت لأجهزة الكمبيوتر
+    if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext && p.imageUrl) {
+      fetch(p.imageUrl).then(r => r.blob()).then(blob => {
+        navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]).catch(() => {});
+      }).catch(() => {});
+    }
+
+    // فتح شات رقم العميل مباشرة في واتساب
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(directMsg)}`, '_blank', 'noopener');
+
+    // تحديث موقف الإرسال
     if (markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
       DataService.updateDeliveryStatus(whatsAppModalOrder.id, 'sent');
       refreshData();
-      toast.success('تم فتح واتساب العميل مباشرة وتحديث موقف الإرسال إلى «تم إرساله للعميل».');
+      toast.success('تم فتح واتساب العميل مباشرة مع كود وصورة التصريح وتحديث موقف الإرسال إلى «تم إرساله للعميل».');
     } else {
-      toast.success('تم فتح محادثة العميل مباشرة على رقمه المسجل.');
+      toast.success('تم فتح محادثة العميل مباشرة على رقمه المسجل مع كود وصورة التصريح.');
     }
   };
 
@@ -1556,12 +1588,12 @@ ${accountsList}`);
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleSendDirectToCustomer(p.imageUrl, p.permitCode)}
+                                onClick={() => handleSendPermitDirect(p)}
                                 className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition-all min-h-[36px]"
-                                title="فتح محادثة رقم العميل في واتساب فوراً دون الحاجة للبحث عنه، مع كامل الرسالة ونسخ الصورة تلقائياً للحافظة"
+                                title="فتح محادثة رقم العميل في واتساب فوراً وبها كود التصريح وموعده ورابط صورة التصريح والباركود المباشر"
                               >
                                 <Send className="w-3.5 h-3.5" />
-                                <span>إرسال لرقم العميل مباشرة</span>
+                                <span>إرسال الكود والصورة للعميل مباشرة</span>
                               </button>
                               <button
                                 type="button"
@@ -1604,8 +1636,8 @@ ${accountsList}`);
                     ))}
                   </div>
 
-                  <p className="text-[10px] text-emerald-800 leading-relaxed bg-white/70 p-2 rounded-lg border border-emerald-200">
-                    💡 <strong>طريقة الإرسال المباشر:</strong> اضغط <strong>«إرسال لرقم العميل مباشرة»</strong> ليفتح محادثة رقم العميل في واتساب فوراً ومعه الرسالة كاملة، وتُنسخ صورة التصريح تلقائياً في الحافظة لتلصقها في ثانية (Ctrl + V على الكمبيوتر أو لصق).
+                  <p className="text-[10px] text-emerald-800 leading-relaxed bg-white/70 p-2.5 rounded-xl border border-emerald-200">
+                    💡 <strong>الإرسال المباشر للعميل:</strong> اضغط <strong>«إرسال الكود والصورة للعميل مباشرة»</strong> ليفتح محادثة رقم العميل في واتساب فوراً وفيها كود التصريح وموعده ورابط صورة التصريح والباركود المباشر، دون الحاجة لتسجيل رقمه في هاتفك أو البحث عنه.
                   </p>
                 </div>
               );

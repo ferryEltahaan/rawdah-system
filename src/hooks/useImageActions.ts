@@ -107,7 +107,7 @@ export function useImageActions() {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      toast.success('تم نسخ الصورة إلى الحافظة! ألصقها مباشرة في شات الواتساب (Ctrl + V).');
+      toast.success('تم نسخ الصورة إلى الحافظة.');
     } catch {
       await download(imageUrl, filename);
       toast.info('لا يدعم هذا المتصفح نسخ الصور — تم تحميلها على جهازك لترفقها في رسالة الواتساب.');
