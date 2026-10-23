@@ -79,9 +79,17 @@ export function useImageActions() {
   ): Promise<ShareResult> => {
     if (typeof navigator === 'undefined' || !navigator.share) return 'unavailable';
     try {
-      const blob = await dataUrlToBlob(imageUrl);
+      // دعم data URLs و https URLs على حد سواء
+      let blob: Blob;
+      if (imageUrl.startsWith('data:')) {
+        blob = await dataUrlToBlob(imageUrl);
+      } else {
+        const res = await fetch(imageUrl, { mode: 'cors' });
+        if (!res.ok) throw new Error('fetch-failed');
+        blob = await res.blob();
+      }
       if (!(await canShareImageFile(blob))) return 'unavailable';
-      const file = new File([blob], filename, { type: blob.type || 'image/png' });
+      const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
       await navigator.share({
         files: [file],
         title: options?.title || filename,

@@ -443,27 +443,34 @@ ${accountsList}`);
   };
 
   const handleDownloadPermitImage = async (imageUrl: string, permitCode: string) => {
+    if (!imageUrl) {
+      toast.warning('لا توجد صورة لهذا التصريح.');
+      return;
+    }
     try {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-      if (isIOS && typeof navigator !== 'undefined' && navigator.canShare) {
-        const res = await fetch(imageUrl);
-        const blob = await res.blob();
-        const file = new File([blob], `تصريح_${permitCode}.jpg`, { type: blob.type || 'image/jpeg' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: `تصريح ${permitCode}`,
-          });
-          toast.success('اختر «حفظ الصورة» من القائمة لحفظها في ألبوم الصور.');
-          return;
+      if (isIOS && navigator.canShare) {
+        // على iOS: نحمّل الـ blob أولاً ثم نشاركه عبر قائمة النظام لحفظه في الألبوم
+        const res = await fetch(imageUrl, { mode: 'cors' });
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], `تصريح_${permitCode}.jpg`, { type: blob.type || 'image/jpeg' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: `تصريح ${permitCode}` });
+            toast.success('اختر «حفظ الصورة» من القائمة لحفظها في ألبوم الصور.');
+            return;
+          }
         }
       }
-    } catch {
-      /* إذا ألغى المستخدم أو حدث استثناء نكمل مع التحميل المباشر */
+    } catch (err) {
+      // AbortError = ألغى المستخدم قائمة المشاركة — لا نكمل للتنزيل
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      /* أي استثناء آخر → نكمل بالتحميل المباشر */
     }
-    await imageActions.download(imageUrl, `تصريح_${permitCode}.png`);
+    // كمبيوتر أو fallback: تحميل مباشر عبر blob URL
+    await imageActions.download(imageUrl, `تصريح_${permitCode}.jpg`);
   };
 
   // إرسال كود وصورة التصريح المحدد للعميل مباشرة في واتساب دون الحاجة لتسجيل رقمه أو البحث عنه
