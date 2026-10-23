@@ -482,7 +482,12 @@ ${accountsList}`);
       return;
     }
 
-    // نص الرسالة الأساسي (بدون رابط — للموبايل حيث الصورة ترسل كملف)
+    // رابط الصورة للكمبيوتر
+    const imgLink = (p.imageUrl && p.imageUrl.startsWith('http'))
+      ? `\n\n🖼️ صورة وباركود التصريح:\n${p.imageUrl}`
+      : '';
+
+    // رسالة الموبايل: بدون رابط (الصورة ترسل كملف)
     const directMsg = `السلام عليكم ورحمة الله وبركاته يا ${whatsAppModalOrder.customerName}،
 نرسل لكم كود وصورة تصريح زيارة الروضة الشريفة المعتمد 🕌✨
 
@@ -495,14 +500,18 @@ ${accountsList}`);
 
 تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء.`;
 
-    // نفس الرسالة + رابط الصورة (للكمبيوتر / fallback حيث لا يمكن إرفاق ملف)
-    const imgLink = (p.imageUrl && p.imageUrl.startsWith('http'))
-      ? `\n\n🖼️ صورة وباركود التصريح:\n${p.imageUrl}`
-      : '';
-    const directMsgWithLink = directMsg.replace(
-      'يرجى التواجد',
-      `${imgLink}\n\nيرجى التواجد`
-    );
+    // رسالة الكمبيوتر / fallback: نفس الرسالة + رابط الصورة في النهاية
+    const directMsgWithLink = `السلام عليكم ورحمة الله وبركاته يا ${whatsAppModalOrder.customerName}،
+نرسل لكم كود وصورة تصريح زيارة الروضة الشريفة المعتمد 🕌✨
+
+• رقم الطلب: #${whatsAppModalOrder.orderNumber}
+• كود التصريح: ${p.permitCode}
+• تاريخ الزيارة: ${p.slotDate}
+• وقت الفترة: ${p.slotFormatted}${imgLink}
+
+يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.
+
+تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء.`;
 
     const markSent = () => {
       if (markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
