@@ -474,7 +474,7 @@ ${accountsList}`);
   };
 
   // إرسال كود وصورة التصريح المحدد للعميل مباشرة في واتساب دون الحاجة لتسجيل رقمه أو البحث عنه
-  const handleSendPermitDirect = (p: Permit) => {
+  const handleSendPermitDirect = async (p: Permit) => {
     if (!whatsAppModalOrder) return;
     const cleanPhone = (whatsAppModalOrder.customerWhatsapp || '').replace(/[^0-9]/g, '');
     if (!cleanPhone) {
@@ -482,39 +482,69 @@ ${accountsList}`);
       return;
     }
 
-    const imgText = (p.imageUrl && p.imageUrl.startsWith('http'))
-      ? `\n\n🖼️ رابط صورة وباركود التصريح مباشرة:\n${p.imageUrl}`
-      : '';
-
+    // نص الرسالة بدون رابط الصورة (الصورة ترسل كملف حقيقي)
     const directMsg = `السلام عليكم ورحمة الله وبركاته يا ${whatsAppModalOrder.customerName}،
 نرسل لكم كود وصورة تصريح زيارة الروضة الشريفة المعتمد 🕌✨
 
 • رقم الطلب: #${whatsAppModalOrder.orderNumber}
 • كود التصريح: ${p.permitCode}
 • تاريخ الزيارة: ${p.slotDate}
-• وقت الفترة: ${p.slotFormatted}${imgText}
+• وقت الفترة: ${p.slotFormatted}
 
 يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.
 
 تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء.`;
 
-    // محاولة نسخ الصورة في صمت لأجهزة الكمبيوتر
-    if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext && p.imageUrl) {
-      fetch(p.imageUrl).then(r => r.blob()).then(blob => {
-        navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]).catch(() => {});
-      }).catch(() => {});
+    const markSent = () => {
+      if (markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
+        DataService.updateDeliveryStatus(whatsAppModalOrder.id, 'sent');
+        refreshData();
+      }
+    };
+
+    // ── الموبايل: نشارك الصورة كملف حقيقي عبر قائمة النظام → المستخدم يختار واتساب ──
+    if (p.imageUrl && typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        const res = await fetch(p.imageUrl, { mode: 'cors' });
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], `تصريح_${p.permitCode}.jpg`, { type: blob.type || 'image/jpeg' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              text: directMsg,
+              title: `تصريح ${p.permitCode}`,
+            });
+            markSent();
+            toast.success('اختر «واتساب» من القائمة — الصورة ترسل كصورة حقيقية للعميل مباشرة.');
+            return;
+          }
+        }
+      } catch (err) {
+        // AbortError = ألغى المستخدم القائمة
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // خطأ آخر → نكمل بالطريقة الاحتياطية
+      }
     }
 
-    // فتح شات رقم العميل مباشرة في واتساب
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(directMsg)}`, '_blank', 'noopener');
+    // ── الكمبيوتر / fallback: ننسخ الصورة للحافظة + نفتح واتساب ──
+    let copiedImage = false;
+    if (p.imageUrl && navigator.clipboard && window.isSecureContext) {
+      try {
+        const res = await fetch(p.imageUrl, { mode: 'cors' });
+        const blob = await res.blob();
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        copiedImage = true;
+      } catch { /* تجاهل خطأ الحافظة */ }
+    }
 
-    // تحديث موقف الإرسال
-    if (markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
-      DataService.updateDeliveryStatus(whatsAppModalOrder.id, 'sent');
-      refreshData();
-      toast.success('تم فتح واتساب العميل مباشرة مع كود وصورة التصريح وتحديث موقف الإرسال إلى «تم إرساله للعميل».');
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(directMsg)}`, '_blank', 'noopener');
+    markSent();
+
+    if (copiedImage) {
+      toast.success('✅ تم نسخ صورة التصريح — بعد فتح واتساب اضغط على حقل الكتابة ثم اضغط Ctrl+V (أو اضغط مطولاً واختر «لصق») لإرفاق الصورة مع الرسالة.');
     } else {
-      toast.success('تم فتح محادثة العميل مباشرة على رقمه المسجل مع كود وصورة التصريح.');
+      toast.success('تم فتح محادثة العميل على رقمه المسجل — أرفق صورة التصريح يدوياً من الجهاز.');
     }
   };
 
