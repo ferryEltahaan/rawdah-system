@@ -482,7 +482,7 @@ ${accountsList}`);
       return;
     }
 
-    // نص الرسالة بدون رابط الصورة (الصورة ترسل كملف حقيقي)
+    // نص الرسالة الأساسي (بدون رابط — للموبايل حيث الصورة ترسل كملف)
     const directMsg = `السلام عليكم ورحمة الله وبركاته يا ${whatsAppModalOrder.customerName}،
 نرسل لكم كود وصورة تصريح زيارة الروضة الشريفة المعتمد 🕌✨
 
@@ -494,6 +494,15 @@ ${accountsList}`);
 يرجى التواجد أمام بوابات الدخول قبل الموعد بـ 15 دقيقة وإبراز تصريح نُسك / توكلنا.
 
 تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء.`;
+
+    // نفس الرسالة + رابط الصورة (للكمبيوتر / fallback حيث لا يمكن إرفاق ملف)
+    const imgLink = (p.imageUrl && p.imageUrl.startsWith('http'))
+      ? `\n\n🖼️ صورة وباركود التصريح:\n${p.imageUrl}`
+      : '';
+    const directMsgWithLink = directMsg.replace(
+      'يرجى التواجد',
+      `${imgLink}\n\nيرجى التواجد`
+    );
 
     const markSent = () => {
       if (markAsSent && whatsAppModalOrder.deliveryStatus !== 'sent') {
@@ -538,7 +547,7 @@ ${accountsList}`);
       } catch { /* تجاهل خطأ الحافظة */ }
     }
 
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(directMsg)}`, '_blank', 'noopener');
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(directMsgWithLink)}`, '_blank', 'noopener');
     markSent();
 
     if (copiedImage) {
