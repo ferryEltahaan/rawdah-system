@@ -10,7 +10,8 @@ import {
   UserCog, 
   History,
   LogOut,
-  ShieldAlert
+  ShieldAlert,
+  BarChart3
 } from 'lucide-react';
 import { UserRole, CustomPermissions } from '../types';
 
@@ -23,7 +24,8 @@ export type NavTab =
   | 'accounts' 
   | 'settings' 
   | 'employees' 
-  | 'audit';
+  | 'audit'
+  | 'reports';
 
 interface NavItem {
   id: NavTab;
@@ -43,6 +45,7 @@ export const NAV_TAB_LABELS: Record<NavTab, string> = {
   employees: 'فريق العمل والصلاحيات',
   settings: 'إعدادات وبيانات المؤسسة',
   audit: 'سجل العمليات والتدقيق',
+  reports: 'التقارير والتحليلات',
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -106,6 +109,13 @@ const NAV_ITEMS: NavItem[] = [
     id: 'audit',
     label: NAV_TAB_LABELS.audit,
     icon: <History className="w-5 h-5" />,
+    requiredPermission: 'reports',
+    allowedRoles: ['super_admin', 'accountant'],
+  },
+  {
+    id: 'reports',
+    label: NAV_TAB_LABELS.reports,
+    icon: <BarChart3 className="w-5 h-5" />,
     requiredPermission: 'reports',
     allowedRoles: ['super_admin', 'accountant'],
   },

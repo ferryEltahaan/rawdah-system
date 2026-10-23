@@ -19,6 +19,7 @@ const EmployeesAndRolesView = React.lazy(() => import('./components/EmployeesAnd
 const CompanySettingsView = React.lazy(() => import('./components/CompanySettingsView').then(m => ({ default: m.CompanySettingsView })));
 const AuditLogViewer = React.lazy(() => import('./components/AuditLogViewer').then(m => ({ default: m.AuditLogViewer })));
 const CustomerSelfRegister = React.lazy(() => import('./components/CustomerSelfRegister').then(m => ({ default: m.CustomerSelfRegister })));
+const ReportsView = React.lazy(() => import('./components/ReportsView').then(m => ({ default: m.ReportsView })));
 
 const TabLoadingFallback: React.FC = () => (
   <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
@@ -307,6 +308,10 @@ const AppContent: React.FC = () => {
 
                 {effectiveTab === 'audit' && (
                   <AuditLogViewer />
+                )}
+
+                {effectiveTab === 'reports' && (
+                  <ReportsView currentUser={currentUser} />
                 )}
               </Suspense>
             )}
