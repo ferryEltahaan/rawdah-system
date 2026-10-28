@@ -668,13 +668,13 @@ export class DataService {
 
         // السحابة هي المصدر الرسمي والنهائي للموظفين — نستبدل القائمة المحلية بما هو موجود في السحابة
         // لمنع أي جهاز يحتفظ بكاش قديم من إعادة إحياء حسابات تجريبية أو مكررة
-        // ✅ نستثني أي موظف حُذف محلياً بشكل صريح (حتى لو بقي في Supabase بسبب FK)
+        // ✅ نستثني أي موظف حُذف محلياً أو ينتمي للحسابات التجريبية القديمة
         const deletedProfileIds = new Set<string>(
           JSON.parse(localStorage.getItem('rawdah_deleted_profile_ids') || '[]')
         );
-        const filteredProfiles = deletedProfileIds.size > 0
-          ? mappedProfiles.filter(p => !deletedProfileIds.has(p.id))
-          : mappedProfiles;
+        const filteredProfiles = mappedProfiles
+          .filter(p => !DataService.isLegacyDemoProfile(p))
+          .filter(p => deletedProfileIds.size === 0 || !deletedProfileIds.has(p.id));
         saveToStorage(STORAGE_KEYS.PROFILES, filteredProfiles);
       } else if (profileList && profileList.length === 0) {
         // في حالة استثنائية فقط (جدول سحابي فارغ تماماً عند أول تدشين للنظام): نرفع الحسابات المحلية
@@ -1417,17 +1417,40 @@ export class DataService {
     return newAcc;
   }
 
+  static isLegacyDemoProfile(p: Partial<UserProfile>): boolean {
+    if (!p) return false;
+    const name = (p.fullName || '').trim();
+    const uname = (p.username || '').toLowerCase().trim();
+    const phone = (p.phoneNumber || '').trim();
+    const id = (p.id || '').trim();
+
+    // استثناء الحسابات الحقيقية المعتمدة
+    if (uname === 'admin' || id === '07d05943-93b3-4942-80b3-af74c01f710e') return false;
+
+    // 1. حسابات تجريبية بأسماء عامة قديمة
+    if (name === 'المدير العام' || name === 'موظف المبيعات' || name === 'مسؤول المخزون والتصاريح') return true;
+
+    // 2. حسابات تجريبية بأرقام وهمية مسلسلة (+96650000000X)
+    if (['+966500000001', '+966500000002', '+966500000003', '+966500000005', '966500000001', '966500000002', '966500000003', '966500000005'].includes(phone)) return true;
+
+    // 3. حسابات اختبار ومخلفات قديمة
+    if (uname === 'inventory' || uname === 'sara' || uname === 'faridmariam435@gmail.com' || uname.includes('qa_sales') || uname.includes('@rawdah.app') || (p.password === '1234' && uname.includes('@gmail.com'))) return true;
+
+    return false;
+  }
+
   static getProfiles(): UserProfile[] {
     // لا حسابات افتراضية في الحزمة: القائمة تأتي من السحابة (syncFromCloud) أو
     // من التخزين المحلي لما زامنته سابقاً. لا كلمات مرور هنا إطلاقاً.
     const list = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
+    const valid = list.filter(p => !this.isLegacyDemoProfile(p));
     try {
       const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('rawdah_deleted_profile_ids') || '[]'));
       if (deletedIds.size > 0) {
-        return list.filter(p => !deletedIds.has(p.id));
+        return valid.filter(p => !deletedIds.has(p.id));
       }
     } catch { /* ignore */ }
-    return list;
+    return valid;
   }
 
   static getCurrentUser(): UserProfile | null {
@@ -4154,6 +4177,21 @@ export class DataService {
     try {
       localStorage.removeItem(STORAGE_KEYS.DAILY_SCENARIO);
       localStorage.removeItem('rawdah_debug');
+
+      // تنظيف فوري للحسابات والمخلفات التجريبية القديمة من ذاكرة أي جهاز يفتح النظام
+      const rawProfiles = localStorage.getItem(STORAGE_KEYS.PROFILES);
+      if (rawProfiles) {
+        try {
+          const parsed = JSON.parse(rawProfiles);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(p => !DataService.isLegacyDemoProfile(p));
+            if (cleaned.length !== parsed.length) {
+              localStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(cleaned));
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
       const rawPermits = localStorage.getItem(STORAGE_KEYS.PERMITS);
       if (rawPermits && rawPermits.length > 400_000) {
         try {
