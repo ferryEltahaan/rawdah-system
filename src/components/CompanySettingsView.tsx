@@ -4,10 +4,6 @@ import {
   Save,
   CheckCircle2,
   Loader2,
-  Database,
-  Sparkles,
-  Trash2,
-  CalendarCheck,
   MessageSquare,
   RotateCcw,
   HelpCircle,
@@ -35,9 +31,6 @@ export const CompanySettingsView: React.FC = () => {
   const [templates, setTemplates] = useState<MessageTemplates>(DataService.getMessageTemplates());
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSeedingScenario, setIsSeedingScenario] = useState(false);
-  const [isWiping, setIsWiping] = useState(false);
 
   useEffect(() => {
     // جلب مباشر من السحابة لضمان عرض أحدث بيانات المؤسسة وقوالب الرسائل
@@ -56,76 +49,6 @@ export const CompanySettingsView: React.FC = () => {
     window.addEventListener('rawdah_storage_update', handleUpdate);
     return () => window.removeEventListener('rawdah_storage_update', handleUpdate);
   }, []);
-
-  const handleGenerateDemo = async () => {
-    const ok = await toast.confirm(
-      'سيتم مسح جميع البيانات الحالية (العملاء، الطلبات، التصاريح، الرسائل، السجلات) وتوليد بيانات حية واقعية جديدة بالكامل ومزامنتها مع السحابة.',
-      { title: 'توليد تجربة حية شاملة', confirmLabel: 'مسح وتوليد الآن' }
-    );
-    if (!ok) return;
-
-    setIsGenerating(true);
-    try {
-      const result = await DataService.seedLiveDemo();
-      confetti({ particleCount: 120, spread: 80, origin: { y: 0.7 } });
-      toast.success(
-        `تم توليد التجربة الحية بنجاح: ${result.permits} تصريحاً، ${result.orders} طلبات، ${result.customers} عملاء، ${result.sms} رسائل، ${result.accounts} حسابات مالية`
-      );
-      window.dispatchEvent(new Event('rawdah_storage_update'));
-    } catch (e) {
-      console.error(e);
-      toast.error('حدث خطأ أثناء توليد البيانات التجريبية، راجع وحدة التحكم.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleSeedDailyScenario = async () => {
-    const ok = await toast.confirm(
-      'سيتم إعداد سيناريو السداد اليومي المخصص (10 عملاء بطلبات اليوم مستحقة السداد بالجنيه والريال)، مع نصوص رسائل SMS جاهزة للاختبار.',
-      { title: 'توليد سيناريو السداد اليومي', confirmLabel: 'تجهيز السيناريو الآن' }
-    );
-    if (!ok) return;
-
-    setIsSeedingScenario(true);
-    try {
-      const result = await DataService.seedDailyPaymentScenario();
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
-      toast.success(`تم تجهيز سيناريو السداد اليومي: ${result.orders} طلبات، ${result.customers} عملاء، وجاهز في صندوق الرسائل.`);
-      window.dispatchEvent(new Event('rawdah_storage_update'));
-    } catch (e) {
-      console.error(e);
-      toast.error('حدث خطأ أثناء تجهيز سيناريو السداد.');
-    } finally {
-      setIsSeedingScenario(false);
-    }
-  };
-
-  const handleWipeAll = async () => {
-    // ✅ حماية إضافية: مسح بيانات الإنتاج السحابية لا يفعله سوى المدير العام،
-    // حتى لو ظهر الزر في وضع التطوير.
-    if (DataService.getCurrentUser()?.role !== 'super_admin') {
-      toast.error('هذا الإجراء متاح للمدير العام فقط.');
-      return;
-    }
-    const ok = await toast.confirm(
-      'سيتم مسح جميع البيانات نهائياً (العملاء، الطلبات، التصاريح، الرسائل، السجلات) من الجهاز والسحابة.\nهذا الإجراء لا يمكن التراجع عنه.',
-      { title: 'مسح جميع البيانات نهائياً', confirmLabel: 'نعم، امسح نهائياً', danger: true }
-    );
-    if (!ok) return;
-
-    setIsWiping(true);
-    try {
-      await DataService.wipeAllData();
-      toast.success('تم مسح جميع البيانات بنجاح من الجهاز والسحابة.');
-      window.dispatchEvent(new Event('rawdah_storage_update'));
-    } catch (e) {
-      console.error(e);
-      toast.error('حدث خطأ أثناء مسح البيانات، راجع وحدة التحكم.');
-    } finally {
-      setIsWiping(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -461,52 +384,7 @@ export const CompanySettingsView: React.FC = () => {
 
       </form>
 
-      {/* Data Management & Live Demo (متاح للمدير العام) */}
-      {DataService.getCurrentUser()?.role === 'super_admin' && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Database className="w-4 h-4 text-emerald-600" />
-              <span>إدارة البيانات والتجربة الحية</span>
-            </h3>
-            <p className="text-xs text-slate-600 mt-1">
-              توليد مجموعة بيانات واقعية متكاملة (عملاء، تصاريح، طلبات، رسائل بنكية، حسابات، سجلات) لاختبار النظام بشكل كامل، أو مسح جميع البيانات نهائياً.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              type="button"
-              onClick={handleGenerateDemo}
-              disabled={isGenerating || isSeedingScenario || isWiping}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold px-4 py-3 rounded-2xl text-xs shadow-md shadow-emerald-700/20 hover:shadow-lg transition-all"
-            >
-              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              <span>{isGenerating ? 'جاري التوليد...' : 'توليد تجربة شاملة'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSeedDailyScenario}
-              disabled={isGenerating || isSeedingScenario || isWiping}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold px-4 py-3 rounded-2xl text-xs shadow-md shadow-teal-700/20 hover:shadow-lg transition-all"
-            >
-              {isSeedingScenario ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarCheck className="w-4 h-4" />}
-              <span>{isSeedingScenario ? 'جاري الإعداد...' : 'سيناريو السداد اليومي (10 عملاء)'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleWipeAll}
-              disabled={isGenerating || isSeedingScenario || isWiping}
-              className="flex items-center justify-center gap-2 bg-white border-2 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 disabled:opacity-60 disabled:cursor-not-allowed font-bold px-4 py-3 rounded-2xl text-xs transition-all"
-            >
-              {isWiping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              <span>{isWiping ? 'جاري المسح...' : 'مسح البيانات نهائياً'}</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* أدوات البيانات التجريبية محذوفة من الإنتاج — لا تعيد إضافتها */}
 
     </div>
   );

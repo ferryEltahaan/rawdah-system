@@ -668,7 +668,14 @@ export class DataService {
 
         // السحابة هي المصدر الرسمي والنهائي للموظفين — نستبدل القائمة المحلية بما هو موجود في السحابة
         // لمنع أي جهاز يحتفظ بكاش قديم من إعادة إحياء حسابات تجريبية أو مكررة
-        saveToStorage(STORAGE_KEYS.PROFILES, mappedProfiles);
+        // ✅ نستثني أي موظف حُذف محلياً بشكل صريح (حتى لو بقي في Supabase بسبب FK)
+        const deletedProfileIds = new Set<string>(
+          JSON.parse(localStorage.getItem('rawdah_deleted_profile_ids') || '[]')
+        );
+        const filteredProfiles = deletedProfileIds.size > 0
+          ? mappedProfiles.filter(p => !deletedProfileIds.has(p.id))
+          : mappedProfiles;
+        saveToStorage(STORAGE_KEYS.PROFILES, filteredProfiles);
       } else if (profileList && profileList.length === 0) {
         // في حالة استثنائية فقط (جدول سحابي فارغ تماماً عند أول تدشين للنظام): نرفع الحسابات المحلية
         const localProfiles = this.getProfiles();
@@ -1413,7 +1420,14 @@ export class DataService {
   static getProfiles(): UserProfile[] {
     // لا حسابات افتراضية في الحزمة: القائمة تأتي من السحابة (syncFromCloud) أو
     // من التخزين المحلي لما زامنته سابقاً. لا كلمات مرور هنا إطلاقاً.
-    return loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
+    const list = loadFromStorage<UserProfile[]>(STORAGE_KEYS.PROFILES, []);
+    try {
+      const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('rawdah_deleted_profile_ids') || '[]'));
+      if (deletedIds.size > 0) {
+        return list.filter(p => !deletedIds.has(p.id));
+      }
+    } catch { /* ignore */ }
+    return list;
   }
 
   static getCurrentUser(): UserProfile | null {
@@ -1444,6 +1458,12 @@ export class DataService {
       profiles.push(newProfile);
     }
     const localSaved = saveToStorage(STORAGE_KEYS.PROFILES, profiles);
+    try {
+      const deletedIds: string[] = JSON.parse(localStorage.getItem('rawdah_deleted_profile_ids') || '[]');
+      if (deletedIds.includes(id)) {
+        localStorage.setItem('rawdah_deleted_profile_ids', JSON.stringify(deletedIds.filter(x => x !== id)));
+      }
+    } catch { /* ignore */ }
 
     // Push to cloud — كلمات المرور لا تُرسل أبداً
     if (getIsConfigured() && getSupabase()) {
@@ -1480,6 +1500,15 @@ export class DataService {
     const localSaved = saveToStorage(STORAGE_KEYS.PROFILES, profiles.filter(p => p.id !== target.id && p.username !== target.username));
     if (!localSaved) return { localSaved: false, notFound: false, cloudFailed: false };
 
+    // ✅ حفظ معرّف الموظف المحذوف في قائمة محلية دائمة لمنع syncFromCloud من إعادته
+    try {
+      const deletedIds: string[] = JSON.parse(localStorage.getItem('rawdah_deleted_profile_ids') || '[]');
+      if (!deletedIds.includes(target.id)) {
+        deletedIds.push(target.id);
+        localStorage.setItem('rawdah_deleted_profile_ids', JSON.stringify(deletedIds));
+      }
+    } catch { /* ignore */ }
+
     let cloudFailed = false;
     if (getIsConfigured() && getSupabase()) {
       // جدول profiles السحابي مفتاحه UUID ومرتبط بـ auth.users، فالموظفون المحليون (معرّفاتهم نصية) لا وجود لهم فيه
@@ -1491,6 +1520,7 @@ export class DataService {
           if (error) {
             cloudFailed = true;
             console.error('Cloud profile delete error:', error);
+            // حتى لو فشل الحذف السحابي (FK constraint) — الموظف سيُحجب محلياً عبر rawdah_deleted_profile_ids
           }
         } catch (e) {
           cloudFailed = true;
