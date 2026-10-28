@@ -624,7 +624,11 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
               >
                 <div className="font-mono text-xs font-bold">{hourLabel}</div>
                 <div className={`text-[10px] mt-0.5 font-semibold ${isSelected ? 'text-emerald-100' : 'text-emerald-700'}`}>
-                  {stats.available} متاح
+                  {stats.available > 0
+                    ? `${stats.available} متاح`
+                    : stats.expired > 0
+                    ? `${stats.expired} منتهي`
+                    : '0 متاح'}
                 </div>
               </button>
             );
@@ -652,9 +656,17 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
               <div className="flex items-center justify-between mb-1">
                 <span className="font-mono font-black text-lg text-emerald-800">{slotLabel}</span>
                 <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-                  stats.available > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                  stats.available > 0
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    : stats.expired > 0
+                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                    : 'bg-slate-100 text-slate-500'
                 }`}>
-                  {stats.available} متاح
+                  {stats.available > 0
+                    ? `${stats.available} متاح`
+                    : stats.expired > 0
+                    ? `${stats.expired} منتهي الصلاحية`
+                    : '0 متاح'}
                 </span>
               </div>
               <div className="text-xs text-slate-500 flex items-center justify-between mt-2">
@@ -753,8 +765,27 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
                 <span>ملغي ({currentSlotStatuses.cancelled})</span>
               </span>
             )}
+            {currentSlotStatuses.expired > 0 && (
+              <span className="flex items-center gap-1.5 font-bold text-rose-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+                <span>منتهي الصلاحية ({currentSlotStatuses.expired})</span>
+              </span>
+            )}
           </div>
         </div>
+
+        {/* تنبيه واضح في حالة انقضاء فترة الدخول (الـ 20 دقيقة) لحماية المعتمرين وتوضيح سبب عدم إتاحة السحب */}
+        {currentSlotStatuses.expired > 0 && currentSlotPermits.filter(p => p.status === 'available').length === 0 && (
+          <div className="bg-rose-50 border border-rose-200/80 rounded-2xl p-4 flex items-center gap-3 text-rose-900 text-xs shadow-sm">
+            <Clock className="w-5 h-5 shrink-0 text-rose-600" />
+            <div>
+              <p className="font-bold">تنبيه انتهاء فترة الدخول الرسمية (20 دقيقة):</p>
+              <p className="text-rose-700 mt-0.5">
+                انقضت نافذة الدخول لهذه الفترة بتوقيت الروضة الشريفة. التصاريح المرفوعة محفوظة بالكامل في النظام وموقوفة آلياً عن السحب لحماية المعتمرين من رفض الدخول عند البوابات. يمكن للمدير نقلها لفترة قادمة أو أرشفتها.
+              </p>
+            </div>
+          </div>
+        )}
 
         {currentSlotPermits.length === 0 ? (
           <div className="text-center py-12 text-slate-400 space-y-3 bg-slate-50 rounded-2xl border border-slate-200">

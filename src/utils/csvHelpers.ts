@@ -16,16 +16,17 @@ export function todayRiyadh(): string {
 
 /**
  * التحقق مما إذا كانت الفترة الزمنية للتصريح قد انقضت بتوقيت مكة المكرمة (الرياض GMT+3)
+ * مدة الزيارة الرسمية في الروضة الشريفة هي 20 دقيقة بدقة لحماية المعتمرين والمنشأة من محاولة دخول بتصريح منقضي
  * @param slotDate تاريخ الفترة YYYY-MM-DD
  * @param slotHour ساعة الفترة 0..23
  * @param slotMinute دقيقة الفترة 0, 20, 40
- * @param graceMinutes فترة السماح بعد بدء الفترة بالدقائق (افتراضياً 180 دقيقة / 3 ساعات للسماح بالمرونة التشغيلية وسحب التصاريح لنفس اليوم)
+ * @param graceMinutes فترة صلاحية التصريح بالدقائق (20 دقيقة بدقة حسب مدة الزيارة الرسمية)
  */
 export function isSlotPast(
   slotDate: string,
   slotHour: number,
   slotMinute: number,
-  graceMinutes = 180
+  graceMinutes = 20
 ): boolean {
   if (!slotDate) return false;
   const today = todayRiyadh();
@@ -34,7 +35,7 @@ export function isSlotPast(
   // التواريخ المستقبلية لا تنتهي أبداً
   if (slotDate > today) return false;
 
-  // بالنسبة لفترات اليوم الحالي: فترة سماح واسعة (3 ساعات) من بداية الفترة
+  // بالنسبة لفترات اليوم الحالي: تنتهي صلاحية الدخول بعد 20 دقيقة من بداية الفترة
   const pad = (n: number) => String(n).padStart(2, '0');
   const slotStartTime = new Date(`${slotDate}T${pad(slotHour)}:${pad(slotMinute)}:00+03:00`).getTime();
   if (isNaN(slotStartTime)) return false;
