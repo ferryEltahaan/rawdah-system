@@ -52,7 +52,7 @@ BEGIN
             lower(trim(username)) = v_clean_user
             OR lower(trim(username)) = v_clean_user || '@' || v_email_domain
             OR lower(trim(username)) = p_username
-            OR lower(trim("fullName")) = v_clean_user
+            OR lower(trim(full_name)) = v_clean_user
         )
     LIMIT 1;
 
@@ -72,10 +72,13 @@ BEGIN
         );
     END IF;
 
-    -- التحقق من كلمة المرور باستخدام pgcrypto
+    -- التحقق من كلمة المرور: يدعم bcrypt (crypt) و SHA-256 (digest)
     IF v_profile.password_hash IS NULL
        OR v_profile.password_hash = ''
-       OR crypt(p_password, v_profile.password_hash) <> v_profile.password_hash
+       OR NOT (
+           crypt(p_password, v_profile.password_hash) = v_profile.password_hash
+           OR encode(digest(p_password, 'sha256'), 'hex') = lower(v_profile.password_hash)
+       )
     THEN
         RETURN jsonb_build_object(
             'success', false,
@@ -88,7 +91,7 @@ BEGIN
         'success', true,
         'profile', jsonb_build_object(
             'id',                v_profile.id,
-            'fullName',          v_profile."fullName",
+            'fullName',          v_profile.full_name,
             'username',          v_profile.username,
             'role',              v_profile.role,
             'phoneNumber',       v_profile.phone_number,
@@ -159,7 +162,7 @@ BEGIN
     IF FOUND THEN
         -- تحديث الموظف الموجود
         UPDATE profiles SET
-            "fullName"       = p_full_name,
+            full_name        = p_full_name,
             role             = p_role::user_role_enum,
             phone_number     = p_phone,
             whatsapp_number  = p_whatsapp,
@@ -181,7 +184,7 @@ BEGIN
         INSERT INTO profiles (
             id,
             username,
-            "fullName",
+            full_name,
             role,
             phone_number,
             whatsapp_number,

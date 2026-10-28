@@ -42,8 +42,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 DO $$ BEGIN
-    CREATE TYPE permit_status_enum AS ENUM ('available', 'locked', 'assigned', 'returned', 'cancelled');
+    CREATE TYPE permit_status_enum AS ENUM ('available', 'locked', 'assigned', 'returned', 'cancelled', 'expired');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ضمان إضافة حالة 'expired' للتصاريح المنتهية إذا كان النوع موجوداً مسبقاً
+ALTER TYPE permit_status_enum ADD VALUE IF NOT EXISTS 'expired';
 
 DO $$ BEGIN
     CREATE TYPE order_type_enum AS ENUM ('instant', 'scheduled');
