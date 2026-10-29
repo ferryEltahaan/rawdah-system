@@ -239,6 +239,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ currentUser: _ }) => {
     return map;
   }, [ordersInRange]);
 
+  const ordersRevenue = ordersInRange.reduce((s, o) => s + o.totalAmount, 0);
+  const ordersPaid = ordersInRange.reduce((s, o) => s + o.paidAmount, 0);
+  const ordersRemain = Math.max(0, ordersRevenue - ordersPaid);
   const ordersPermits = ordersInRange.reduce((s, o) => s + o.permitsCount, 0);
 
   const formatMultiCur = (map: { SAR: number; EGP: number }) => {
