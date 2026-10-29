@@ -15,7 +15,9 @@ import {
   Loader2,
   Copy,
   ExternalLink,
-  QrCode
+  QrCode,
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
 import { SmsMessage, SalesOrder, UserProfile } from '../types';
 import { DataService, AutoMatchOutcome, BatchIngestResult, DailyPaymentSummary } from '../services/dataService';
@@ -203,6 +205,31 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
       refreshData();
       setMatchingSms(null);
       setSelectedOrderId('');
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleUnmatchSms = async (smsId: string, orderNumber?: number) => {
+    const numText = orderNumber ? `الطلب #${orderNumber}` : 'الطلب';
+    if (!window.confirm(`هل أنت متأكد من إلغاء مطابقة هذه الرسالة عن ${numText}؟\nسيتم خصم المبلغ من مدفوعات الطلب ورصيد الحساب المالي.`)) {
+      return;
+    }
+    const res = await DataService.unmatchSms(smsId);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleDeleteSms = async (smsId: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذه الرسالة نهائياً؟')) return;
+    const res = await DataService.deleteSms(smsId);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
     } else {
       toast.error(res.message);
     }
@@ -477,21 +504,42 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
                   )}
                 </div>
 
-                {/* Right: Match Button */}
+                {/* Right: Actions */}
                 <div className="shrink-0">
                   {isMatched ? (
-                    <span className="text-xs text-slate-500 font-bold flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>تمت المطابقة</span>
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-slate-500 font-bold flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>تمت المطابقة</span>
+                      </span>
+                      <button
+                        onClick={() => handleUnmatchSms(msg.id, msg.matchedOrderNumber)}
+                        className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-all shadow-xs flex items-center gap-1.5 text-xs font-bold"
+                        title="إلغاء مطابقة هذه الرسالة وخصم المبلغ من المدفوع ورصيد الخزينة"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>إلغاء المطابقة</span>
+                      </button>
+                    </div>
                   ) : (
-                    <button
-                      onClick={() => setMatchingSms(msg)}
-                      className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs shadow-md shadow-emerald-600/20 transition-all"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span>اختيار وسداد لعميل</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setMatchingSms(msg)}
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-2xl text-xs shadow-md shadow-emerald-600/20 transition-all"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span>اختيار وسداد لعميل</span>
+                      </button>
+                      {currentUser.role === 'super_admin' && (
+                        <button
+                          onClick={() => handleDeleteSms(msg.id)}
+                          className="p-2 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all shadow-xs"
+                          title="حذف الرسالة نهائياً"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

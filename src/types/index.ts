@@ -29,14 +29,14 @@ export interface UserProfile {
 export type CurrencyCode = 'SAR' | 'EGP';
 
 export type AccountType = 'wallet' | 'bank';
-export type AccountProvider = 
-  | 'vodafone_cash' 
-  | 'orange_cash' 
-  | 'etisalat_cash' 
-  | 'instapay' 
-  | 'al_rajhi' 
-  | 'al_ahli' 
-  | 'riyad_bank' 
+export type AccountProvider =
+  | 'vodafone_cash'
+  | 'orange_cash'
+  | 'etisalat_cash'
+  | 'instapay'
+  | 'al_rajhi'
+  | 'al_ahli'
+  | 'riyad_bank'
   | 'other';
 
 export interface FinancialAccount {
@@ -182,7 +182,7 @@ export interface AuditLog {
   id: string;
   userId: string;
   userName: string;
-  actionType: 'CLAIM_PERMIT' | 'RETURN_PERMIT' | 'MATCH_SMS' | 'CREATE_ORDER' | 'UPDATE_ORDER' | 'DELETE_ORDER' | 'UPLOAD_PERMITS' | 'DELETE_PERMIT' | 'DELETE_PROFILE' | 'UPDATE_PERMISSIONS' | 'ARCHIVE_ORDER' | 'ARCHIVE_PERMITS' | 'CREATE_CUSTOMER' | 'UPDATE_CUSTOMER' | 'DELETE_CUSTOMER' | 'UPDATE_PROFILE' | 'TOGGLE_EMPLOYEE_STATUS' | 'RECORD_PAYMENT' | 'SEND_REMINDER';
+  actionType: 'CLAIM_PERMIT' | 'RETURN_PERMIT' | 'MATCH_SMS' | 'UNMATCH_SMS' | 'DELETE_SMS' | 'CREATE_ORDER' | 'UPDATE_ORDER' | 'DELETE_ORDER' | 'UPLOAD_PERMITS' | 'DELETE_PERMIT' | 'DELETE_PROFILE' | 'UPDATE_PERMISSIONS' | 'ARCHIVE_ORDER' | 'ARCHIVE_PERMITS' | 'CREATE_CUSTOMER' | 'UPDATE_CUSTOMER' | 'DELETE_CUSTOMER' | 'UPDATE_PROFILE' | 'TOGGLE_EMPLOYEE_STATUS' | 'RECORD_PAYMENT' | 'SEND_REMINDER';
   entityName: string;
   entityId: string;
   details: Record<string, any>;

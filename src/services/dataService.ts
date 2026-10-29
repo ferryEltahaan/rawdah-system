@@ -283,13 +283,13 @@ function normalizePhoneDigits(phone: string): string {
 // كشف مزود التحويل من أي نص (المرسل أو المتن) — عربي وإنجليزي
 function detectProviderKeyword(text: string): AccountProvider | null {
   const t = text.toLowerCase();
-  if (t.includes('vf-') || t.includes('vodafone') || t.includes('فودافون')) return 'vodafone_cash';
-  if (t.includes('orange') || t.includes('أورانج') || t.includes('اورنج')) return 'orange_cash';
-  if (t.includes('etisalat') || t.includes('اتصالات')) return 'etisalat_cash';
-  if (t.includes('instapay') || t.includes('انستاباي')) return 'instapay';
-  if (t.includes('rajhi') || t.includes('راجحي')) return 'al_rajhi';
-  if (t.includes('ahli') || t.includes('snb') || t.includes('الأهلي') || t.includes('الاهلي')) return 'al_ahli';
-  if (t.includes('riyad') || t.includes('الرياض')) return 'riyad_bank';
+  if (t.includes('vf-') || t.includes('vodafone') || t.includes('فودافون') || t.includes('فودافون كاش')) return 'vodafone_cash';
+  if (t.includes('orange') || t.includes('أورانج') || t.includes('اورنج') || t.includes('اورانج') || t.includes('اورنچ')) return 'orange_cash';
+  if (t.includes('etisalat') || t.includes('اتصالات') || t.includes('e&') || t.includes('we pay') || t.includes('وي باي')) return 'etisalat_cash';
+  if (t.includes('instapay') || t.includes('انستاباي') || t.includes('إنستاباي') || t.includes('انستا باي') || t.includes('إنستا باي') || t.includes('ip_')) return 'instapay';
+  if (t.includes('rajhi') || t.includes('راجحي') || t.includes('الراجحي')) return 'al_rajhi';
+  if (t.includes('ahli') || t.includes('snb') || t.includes('الأهلي') || t.includes('الاهلي') || t.includes('alahli')) return 'al_ahli';
+  if (t.includes('riyad') || t.includes('الرياض') || t.includes('بنك الرياض')) return 'riyad_bank';
   return null;
 }
 
@@ -3280,13 +3280,31 @@ export class DataService {
     // تنظيف فواصل الآلاف في الأرقام (مثل 1,500.00 إلى 1500.00) لتسهيل القراءة الصحيحة
     const normalizedBody = rawBody.replace(/(\d),(\d)/g, '$1$2');
 
-    // 1. مبالغ مصحوبة بكلمات مفتاحية صريحة (إيداع / استلام / تحويل / شحن / دفع / وارد)
-    const keywordAmountRegex = /(?:مبلغ|استلام|تحويل|بمبلغ|قيمة|إيداع|ايداع|أودع|شحن|وارد|تم\s*دفع|amount|received|deposit|credited|paid)\s*[:]?\s*([0-9]+(?:\.[0-9]{1,2})?)/i;
+    // 🛡️ حاجز أمان مالي: كشف العمليات الصادرة (خصم / سحب / مشتريات / سداد فواتير)
+    // لا يجوز احتساب عملية خصم أو سحب كإيداع سداد لطلب عميل!
+    const isDebitOrOutgoing = /(?:خصم|سحب|صادرة|حوالة\s*صادرة|تم\s*خصم|تم\s*سحب|شراء|مشتريات|سداد\s*فاتورة|تحويل\s*من\s*حسابك|تحويل\s*من\s*محفظتك|debit|withdrawn|sent\s*to|transferred\s*from|purchase|atm\s*withdraw)/i.test(normalizedBody);
+    if (isDebitOrOutgoing) {
+      return {
+        sender,
+        rawBody,
+        parsedAmount: 0,
+        parsedReferenceId: undefined,
+        parsedAccountNumber: undefined,
+        parsedProvider,
+        status: 'unmatched',
+      };
+    }
+
+    // إزالة جزء "الرصيد الحالي / المتاح" حتى لا يلتبس مع مبلغ التحويل المحول
+    const bodyWithoutBalance = normalizedBody.replace(/(?:رصيدك\s*الحالي|الرصيد\s*المتاح|رصيدك|your\s*balance|current\s*balance|available\s*balance)\s*[:]?\s*[0-9]+(?:\.[0-9]{1,2})?/gi, '');
+
+    // 1. مبالغ مصحوبة بكلمات مفتاحية صريحة (إيداع / استلام / واردة / إضافة / استقبال / تحويل)
+    const keywordAmountRegex = /(?:مبلغ|استلام|استقبلت|استقبال|إيداع|ايداع|أودع|شحن|وارد|واردة|إضافة|اضافة|تمت\s*إضافة|تم\s*إيداع|تم\s*استلام|بمبلغ|قيمة|تم\s*دفع|amount|received|deposit|credited|paid)\s*[:]?\s*([0-9]+(?:\.[0-9]{1,2})?)/i;
     // 2. مبالغ مصحوبة بالعملة مباشرة (مثل: 500 ر.س أو 1500 ج.م أو 200 SAR)
     const currencyAmountRegex = /([0-9]+(?:\.[0-9]{1,2})?)\s*(?:ر\.?س|ريال|ج\.?م|جنيه|SAR|EGP)/i;
 
-    const matchKw = normalizedBody.match(keywordAmountRegex);
-    const matchCur = normalizedBody.match(currencyAmountRegex);
+    const matchKw = bodyWithoutBalance.match(keywordAmountRegex);
+    const matchCur = bodyWithoutBalance.match(currencyAmountRegex);
 
     if (matchKw && matchKw[1]) {
       parsedAmount = parseFloat(matchKw[1]);
@@ -3294,7 +3312,7 @@ export class DataService {
       parsedAmount = parseFloat(matchCur[1]);
     } else {
       // بحث عن رقم منطقي لا يمثل سنة (2024..2030) ولا يبدأ بصفر كالهاتف
-      const potentialNums = normalizedBody.match(/\b([1-9][0-9]{1,5}(?:\.[0-9]{1,2})?)\b/g);
+      const potentialNums = bodyWithoutBalance.match(/\b([1-9][0-9]{1,5}(?:\.[0-9]{1,2})?)\b/g);
       if (potentialNums) {
         const nonYear = potentialNums.find(n => {
           const val = parseFloat(n);
@@ -3305,7 +3323,7 @@ export class DataService {
       }
     }
 
-    const refRegex = /(?:رقم العملية|مرجع|المرجع|العملية|ref|reference|txn|id)\s*[:]?\s*([A-Za-z0-9_-]{5,20})/i;
+    const refRegex = /(?:رقم العملية|رقم المرجع|المرجع|معرف العملية|مرجع|العملية|ref|reference|txn|rrn|id)\s*[:]?\s*([A-Za-z0-9_-]{5,25})/i;
     const matchRef = rawBody.match(refRegex);
     if (matchRef && matchRef[1]) {
       parsedReferenceId = matchRef[1];
@@ -3899,6 +3917,142 @@ export class DataService {
       orderNumber: order.orderNumber,
       currencyWarning,
     };
+  }
+
+  /** فك مطابقة رسالة SMS عن الطلب وإعادة احتساب المبالغ ورصيد الحساب المالي وسجل الرقابة */
+  static async unmatchSms(smsId: string): Promise<{ success: boolean; message: string }> {
+    const currentUser = this.getCurrentUser();
+    const messages = this.getSmsMessages();
+    const sms = messages.find(m => m.id === smsId);
+    if (!sms) return { success: false, message: 'رسالة الدفع غير موجودة.' };
+    if (sms.status !== 'matched') return { success: false, message: 'هذه الرسالة غير مطابقة أصلاً.' };
+
+    const orderId = sms.matchedOrderId;
+    const orderNumber = sms.matchedOrderNumber;
+    const orders = this.getOrders();
+    const order = orderId ? orders.find(o => o.id === orderId) : undefined;
+    const smsAmount = Math.round(Math.max(0, Number(sms.parsedAmount) || 0) * 100) / 100;
+
+    // 1. إعادة حالة الرسالة إلى غير مطابقة
+    sms.status = 'unmatched';
+    sms.matchedOrderId = undefined;
+    sms.matchedOrderNumber = undefined;
+    sms.matchedByUserId = undefined;
+    sms.matchedAt = undefined;
+    saveToStorage(STORAGE_KEYS.SMS, messages);
+
+    // 2. خصم المبلغ من الطلب وإعادة احتساب المتبقي وتحديث الحالة
+    if (order && smsAmount > 0) {
+      order.paidAmount = Math.max(0, Math.round((order.paidAmount - smsAmount) * 100) / 100);
+      order.remainingAmount = Math.max(0, Math.round((order.totalAmount - order.paidAmount) * 100) / 100);
+      if (order.paidAmount < order.totalAmount && order.orderStatus === 'confirmed') {
+        order.orderStatus = 'searching';
+      }
+      // إزالة الدفعة من سجل دفعات الطلب
+      if (order.payments) {
+        const pIdx = order.payments.findIndex(p => p.method === 'sms' && (sms.parsedReferenceId ? p.note?.includes(sms.parsedReferenceId) : p.amount === smsAmount));
+        if (pIdx !== -1) {
+          order.payments.splice(pIdx, 1);
+        }
+      }
+      saveToStorage(STORAGE_KEYS.ORDERS, orders);
+
+      // تحديث الطلب سحابياً
+      if (getIsConfigured() && getSupabase()) {
+        getSupabase()!.from('sales_orders').update({
+          paid_amount: order.paidAmount,
+          remaining_amount: order.remainingAmount,
+          order_status: order.orderStatus,
+          payments: order.payments || [],
+        }).eq('id', order.id).then(() => {});
+      }
+    }
+
+    // 3. خصم المبلغ من الخزنة / الحساب البنكي المقيد عليه
+    if (smsAmount > 0) {
+      const accounts = this.getFinancialAccounts();
+      const orderCurrency = order ? getOrderCurrency(order) : providerCurrency(sms.parsedProvider);
+      const account =
+        accounts.find(a => a.provider === sms.parsedProvider && accountCurrency(a) === orderCurrency) ||
+        accounts.find(a => a.provider === sms.parsedProvider);
+
+      if (account) {
+        account.currentBalance = Math.round((account.currentBalance - smsAmount) * 100) / 100;
+        saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
+
+        if (getIsConfigured() && getSupabase()) {
+          getSupabase()!.rpc('rpc_adjust_balance', {
+            p_account_id: account.id,
+            p_delta: -smsAmount,
+            p_reason: `إلغاء مطابقة SMS للطلب #${orderNumber || orderId}`,
+          }).then(({ error }) => {
+            if (error) {
+              getSupabase()!.from('financial_accounts').update({
+                current_balance: account.currentBalance,
+              }).eq('id', account.id).then(() => {});
+            }
+          });
+        }
+      }
+    }
+
+    // 4. تحديث الرسالة سحابياً
+    if (getIsConfigured() && getSupabase()) {
+      getSupabase()!.from('sms_messages').update({
+        status: 'unmatched',
+        matched_order_id: null,
+        matched_order_number: null,
+        matched_by_user_id: null,
+        matched_at: null,
+      }).eq('id', smsId).then(() => {});
+    }
+
+    // 5. توثيق في سجل الرقابة
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'UNMATCH_SMS', 'sms_messages', smsId, {
+      orderNumber,
+      orderId,
+      amount: sms.parsedAmount,
+      ref: sms.parsedReferenceId,
+    });
+
+    return {
+      success: true,
+      message: `تم إلغاء مطابقة الرسالة عن الطلب #${orderNumber || ''} بنجاح وإعادة احتساب المبالغ.`,
+    };
+  }
+
+  /** حذف رسالة SMS غير مطابقة (مخصص للمدير العام لحذف الرسائل العشوائية أو المكررة) */
+  static async deleteSms(smsId: string): Promise<{ success: boolean; message: string }> {
+    const currentUser = this.getCurrentUser();
+    if (currentUser.role !== 'super_admin') {
+      return { success: false, message: 'عذراً، حذف رسائل الـ SMS مخصص للمدير العام فقط.' };
+    }
+
+    const messages = this.getSmsMessages();
+    const sms = messages.find(m => m.id === smsId);
+    if (!sms) return { success: false, message: 'رسالة الدفع غير موجودة.' };
+    if (sms.status === 'matched') {
+      return { success: false, message: 'لا يمكن حذف رسالة تمت مطابقتها مع طلب. يرجى إلغاء المطابقة أولاً.' };
+    }
+
+    const filtered = messages.filter(m => m.id !== smsId);
+    saveToStorage(STORAGE_KEYS.SMS, filtered);
+
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!.from('sms_messages').delete().eq('id', smsId);
+      } catch (e) {
+        console.error('Cloud delete sms error:', e);
+      }
+    }
+
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'DELETE_SMS', 'sms_messages', smsId, {
+      sender: sms.sender,
+      amount: sms.parsedAmount,
+      ref: sms.parsedReferenceId,
+    });
+
+    return { success: true, message: 'تم حذف الرسالة بنجاح.' };
   }
 
   // تسجيل سداد يدوي مباشر (زر "تم السداد") — يُسجّل باسم الموظف اللي ضغط عشان يتحاسب عليه آخر اليوم
