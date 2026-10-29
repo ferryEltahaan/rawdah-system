@@ -4,7 +4,9 @@ import {
   Plus, 
   Landmark, 
   Smartphone,
-  Pencil
+  Pencil,
+  Trash2,
+  Scale
 } from 'lucide-react';
 import { FinancialAccount, AccountType, AccountProvider, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';
@@ -14,9 +16,17 @@ import confetti from 'canvas-confetti';
 
 export const FinancialAccountsView: React.FC = () => {
   const toast = useToast();
+  const currentUser = DataService.getCurrentUser();
   const [accounts, setAccounts] = useState<FinancialAccount[]>(DataService.getFinancialAccounts());
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+
+  // Quick Balance Adjustment State
+  const [adjustingAccount, setAdjustingAccount] = useState<FinancialAccount | null>(null);
+  const [adjustAction, setAdjustAction] = useState<'deposit' | 'withdraw'>('deposit');
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustReason, setAdjustReason] = useState('');
+  const [isSubmittingAdjust, setIsSubmittingAdjust] = useState(false);
   
   // Form states
   const [type, setType] = useState<AccountType>('wallet');
@@ -98,6 +108,63 @@ export const FinancialAccountsView: React.FC = () => {
     toast.success(editingAccountId ? `تم تحديث بيانات «${accountName}».` : `تمت إضافة «${accountName}» بنجاح.`);
     refreshData();
     setShowAddModal(false);
+  };
+
+  const handleOpenAdjust = (acc: FinancialAccount, defaultAction: 'deposit' | 'withdraw' = 'deposit') => {
+    setAdjustingAccount(acc);
+    setAdjustAction(defaultAction);
+    setAdjustAmount('');
+    setAdjustReason('');
+  };
+
+  const handleSaveAdjust = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustingAccount) return;
+    const val = parseFloat(adjustAmount);
+    if (!val || val <= 0) {
+      toast.warning('يرجى إدخال مبلغ صحيح أكبر من صفر.');
+      return;
+    }
+    if (!adjustReason.trim()) {
+      toast.warning('يرجى إدخال سبب أو ملاحظة عملية تعديل الرصيد.');
+      return;
+    }
+
+    const delta = adjustAction === 'deposit' ? val : -val;
+    setIsSubmittingAdjust(true);
+    try {
+      const res = await DataService.adjustAccountBalance(adjustingAccount.id, delta, adjustReason.trim());
+      if (res.success) {
+        toast.success(res.message);
+        refreshData();
+        setAdjustingAccount(null);
+      } else {
+        toast.error(res.message);
+      }
+    } finally {
+      setIsSubmittingAdjust(false);
+    }
+  };
+
+  const handleDeleteAccount = async (acc: FinancialAccount) => {
+    if (currentUser.role !== 'super_admin') {
+      toast.warning('حذف الحسابات المالية مخصص للمدير العام فقط.');
+      return;
+    }
+    if (Math.abs(acc.currentBalance) > 0.01) {
+      toast.warning(`لا يمكن حذف الحساب «${acc.accountName}» لوجود رصيد مالي به (${acc.currentBalance} ${currencySymbol(accountCurrency(acc))}). يرجى تصفية الرصيد أولاً.`);
+      return;
+    }
+    if (!window.confirm(`هل أنت متأكد من حذف الحساب «${acc.accountName}» نهائياً؟`)) {
+      return;
+    }
+    const res = await DataService.deleteFinancialAccount(acc.id);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
   };
 
   const totalsByCurrency = (accountType: AccountType): Record<CurrencyCode, number> => {
@@ -200,7 +267,7 @@ export const FinancialAccountsView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
                   acc.isActive
                     ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -210,12 +277,30 @@ export const FinancialAccountsView: React.FC = () => {
                 </span>
 
                 <button
+                  onClick={() => handleOpenAdjust(acc, 'deposit')}
+                  className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all"
+                  title="تسوية رصيد يدوي (إيداع / سحب)"
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                </button>
+
+                <button
                   onClick={() => handleOpenEdit(acc)}
                   className="p-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200 hover:border-emerald-200 transition-all"
                   title="تعديل بيانات الحساب"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
+
+                {currentUser.role === 'super_admin' && (
+                  <button
+                    onClick={() => handleDeleteAccount(acc)}
+                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all"
+                    title="حذف الحساب نهائياً (إذا كان الرصيد صفراً)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -452,6 +537,106 @@ export const FinancialAccountsView: React.FC = () => {
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
               >
                 {editingAccountId ? 'حفظ التعديلات' : 'حفظ الحساب'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* QUICK BALANCE ADJUSTMENT MODAL */}
+      {adjustingAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <form onSubmit={handleSaveAdjust} className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Scale className="w-5 h-5 text-emerald-600" />
+                <span>تسوية رصيد — {adjustingAccount.accountName}</span>
+              </h3>
+              <button type="button" onClick={() => !isSubmittingAdjust && setAdjustingAccount(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs flex justify-between items-center">
+              <span className="text-slate-500 font-medium">الرصيد الحالي المتاح:</span>
+              <span className="font-mono font-bold text-slate-900 text-sm">
+                {adjustingAccount.currentBalance.toLocaleString()} {currencySymbol(accountCurrency(adjustingAccount))}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">نوع العملية:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdjustAction('deposit')}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    adjustAction === 'deposit'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  + إيداع / إضافة رصيد
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdjustAction('withdraw')}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    adjustAction === 'withdraw'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  - سحب / خصم رصيد
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                المبلغ المراد {adjustAction === 'deposit' ? 'إيداعه' : 'سحبه'} ({currencySymbol(accountCurrency(adjustingAccount))}):
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">السبب أو الملاحظة (إلزامي للرقابة):</label>
+              <input
+                type="text"
+                required
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                placeholder="مثال: تغذية رصيد نقدي / سداد مصروفات تشغيلية"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200 leading-relaxed">
+              💡 تُوثّق هذه العملية في سجل الرقابة والتدقيق باسم <strong>{currentUser.fullName}</strong> مع حفظ القيمة والسبب.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setAdjustingAccount(null)}
+                disabled={isSubmittingAdjust}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingAdjust || !adjustAmount || parseFloat(adjustAmount) <= 0 || !adjustReason.trim()}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 disabled:opacity-50"
+              >
+                {isSubmittingAdjust ? 'جاري التنفيذ...' : 'تأكيد التسوية'}
               </button>
             </div>
           </form>

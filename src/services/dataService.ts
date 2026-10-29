@@ -1419,6 +1419,105 @@ export class DataService {
     return newAcc;
   }
 
+  /** حذف حساب مالي (مخصص للمدير العام للحسابات الصفرية أو غير المستخدمة) */
+  static async deleteFinancialAccount(id: string): Promise<{ success: boolean; message: string }> {
+    const currentUser = this.getCurrentUser();
+    if (currentUser.role !== 'super_admin') {
+      return { success: false, message: 'عذراً، حذف الحسابات المالية مخصص للمدير العام فقط.' };
+    }
+    const accounts = this.getFinancialAccounts();
+    const acc = accounts.find(a => a.id === id);
+    if (!acc) return { success: false, message: 'الحساب غير موجود.' };
+
+    if (Math.abs(acc.currentBalance) > 0.01) {
+      return {
+        success: false,
+        message: `لا يمكن حذف الحساب «${acc.accountName}» لوجود رصيد مالي به (${acc.currentBalance} ${currencySymbol(accountCurrency(acc))}). يرجى تصفية الرصيد أولاً قبل الحذف.`,
+      };
+    }
+
+    const filtered = accounts.filter(a => a.id !== id);
+    saveToStorage(STORAGE_KEYS.ACCOUNTS, filtered);
+
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!.from('financial_accounts').delete().eq('id', id);
+      } catch (e) {
+        console.error('Cloud delete financial account error:', e);
+      }
+    }
+
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'DELETE_FINANCIAL_ACCOUNT', 'financial_accounts', id, {
+      accountName: acc.accountName,
+      provider: acc.provider,
+      balance: acc.currentBalance,
+    });
+
+    return { success: true, message: `تم حذف الحساب «${acc.accountName}» بنجاح.` };
+  }
+
+  /** تعديل رصيد حساب مالي يدوياً (إيداع / سحب / تسوية رصيد) مع توثيق السبب */
+  static async adjustAccountBalance(
+    accountId: string,
+    delta: number,
+    reason: string
+  ): Promise<{ success: boolean; message: string; newBalance?: number }> {
+    const currentUser = this.getCurrentUser();
+    if (currentUser.role !== 'super_admin' && !currentUser.customPermissions?.edit) {
+      return { success: false, message: 'عذراً، لا تملك صلاحية تعديل رصيد الخزينة.' };
+    }
+    const cleanDelta = Math.round(Number(delta) * 100) / 100;
+    if (isNaN(cleanDelta) || cleanDelta === 0) {
+      return { success: false, message: 'يرجى إدخال قيمة تعديل صحيحة غير صفرية.' };
+    }
+    if (!reason || !reason.trim()) {
+      return { success: false, message: 'يرجى كتابة سبب أو ملاحظة عملية تعديل الرصيد.' };
+    }
+
+    const accounts = this.getFinancialAccounts();
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return { success: false, message: 'الحساب المالي غير موجود.' };
+
+    const newBalance = Math.round((acc.currentBalance + cleanDelta) * 100) / 100;
+    if (newBalance < 0) {
+      return { success: false, message: `لا يمكن السحب بمبلغ أكبر من الرصيد الحالي (${acc.currentBalance} ${currencySymbol(accountCurrency(acc))}).` };
+    }
+
+    acc.currentBalance = newBalance;
+    saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
+
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        const { error } = await getSupabase()!.rpc('rpc_adjust_balance', {
+          p_account_id: accountId,
+          p_delta: cleanDelta,
+          p_reason: reason.trim(),
+        });
+        if (error) {
+          await getSupabase()!.from('financial_accounts').update({
+            current_balance: newBalance,
+          }).eq('id', accountId);
+        }
+      } catch (e) {
+        console.error('Cloud balance adjustment error:', e);
+      }
+    }
+
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'ADJUST_ACCOUNT_BALANCE', 'financial_accounts', accountId, {
+      accountName: acc.accountName,
+      delta: cleanDelta,
+      newBalance,
+      reason: reason.trim(),
+    });
+
+    const actionText = cleanDelta > 0 ? 'إيداع' : 'سحب/تسوية';
+    return {
+      success: true,
+      message: `تم ${actionText} مبلغ ${Math.abs(cleanDelta)} ${currencySymbol(accountCurrency(acc))} في «${acc.accountName}» بنجاح (الرصيد الجديد: ${newBalance}).`,
+      newBalance,
+    };
+  }
+
   static isLegacyDemoProfile(p: Partial<UserProfile>): boolean {
     if (!p) return false;
     const name = (p.fullName || '').trim();

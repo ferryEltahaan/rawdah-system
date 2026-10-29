@@ -211,11 +211,46 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ currentUser: _ }) => {
 
   const genderPct = (n: number) => genderStats.total > 0 ? Math.round((n / genderStats.total) * 100) : 0;
 
-  // ─── إحصائيات الطلبات في النطاق ────────────────────────────────────────────
-  const ordersRevenue = ordersInRange.reduce((s, o) => s + o.totalAmount, 0);
-  const ordersPaid = ordersInRange.reduce((s, o) => s + o.paidAmount, 0);
-  const ordersRemain = ordersInRange.reduce((s, o) => s + o.remainingAmount, 0);
+  // ─── إحصائيات الطلبات في النطاق مقسمة بالعملة ────────────────────────────────
+  const revenueByCur = useMemo(() => {
+    const map = { SAR: 0, EGP: 0 };
+    ordersInRange.forEach(o => {
+      const c = (o.currency === 'EGP' ? 'EGP' : 'SAR') as 'SAR' | 'EGP';
+      map[c] = Math.round((map[c] + o.totalAmount) * 100) / 100;
+    });
+    return map;
+  }, [ordersInRange]);
+
+  const paidByCur = useMemo(() => {
+    const map = { SAR: 0, EGP: 0 };
+    ordersInRange.forEach(o => {
+      const c = (o.currency === 'EGP' ? 'EGP' : 'SAR') as 'SAR' | 'EGP';
+      map[c] = Math.round((map[c] + o.paidAmount) * 100) / 100;
+    });
+    return map;
+  }, [ordersInRange]);
+
+  const remainByCur = useMemo(() => {
+    const map = { SAR: 0, EGP: 0 };
+    ordersInRange.forEach(o => {
+      const c = (o.currency === 'EGP' ? 'EGP' : 'SAR') as 'SAR' | 'EGP';
+      map[c] = Math.round((map[c] + o.remainingAmount) * 100) / 100;
+    });
+    return map;
+  }, [ordersInRange]);
+
   const ordersPermits = ordersInRange.reduce((s, o) => s + o.permitsCount, 0);
+
+  const formatMultiCur = (map: { SAR: number; EGP: number }) => {
+    const parts: string[] = [];
+    if (map.SAR > 0 || (map.SAR === 0 && map.EGP === 0)) {
+      parts.push(`${fmtNum(map.SAR)} ر.س`);
+    }
+    if (map.EGP > 0) {
+      parts.push(`${fmtNum(map.EGP)} ج.م`);
+    }
+    return parts.join(' + ');
+  };
 
   // ─── تصدير CSV ─────────────────────────────────────────────────────────────
   const exportEmployeeSales = () => {
@@ -308,7 +343,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ currentUser: _ }) => {
         <KpiCard
           icon={<TrendingUp className="w-4 h-4 text-emerald-600" />}
           label="إجمالي المبيعات"
-          value={`${fmtNum(ordersRevenue)} ${sym}`}
+          value={formatMultiCur(revenueByCur)}
           sub={`${ordersInRange.length} طلب`}
           color="bg-emerald-50 border-emerald-200"
           trend="up"
@@ -316,18 +351,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ currentUser: _ }) => {
         <KpiCard
           icon={<Wallet className="w-4 h-4 text-blue-600" />}
           label="المحصّل"
-          value={`${fmtNum(ordersPaid)} ${sym}`}
-          sub={`${ordersRevenue > 0 ? Math.round((ordersPaid / ordersRevenue) * 100) : 0}% من الإجمالي`}
+          value={formatMultiCur(paidByCur)}
+          sub={`إجمالي السداد المعتمد`}
           color="bg-blue-50 border-blue-200"
           trend="up"
         />
         <KpiCard
           icon={<AlertCircle className="w-4 h-4 text-amber-600" />}
           label="تحت التحصيل"
-          value={`${fmtNum(ordersRemain)} ${sym}`}
+          value={formatMultiCur(remainByCur)}
           sub={`${pendingOrders.length} طلب`}
           color="bg-amber-50 border-amber-200"
-          trend={ordersRemain > 0 ? 'down' : 'neutral'}
+          trend={(remainByCur.SAR > 0 || remainByCur.EGP > 0) ? 'down' : 'neutral'}
         />
         <KpiCard
           icon={<Ticket className="w-4 h-4 text-violet-600" />}
