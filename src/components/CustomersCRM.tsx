@@ -199,15 +199,18 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
     }
 
     const headers = ['الاسم الكامل', 'رقم الواتساب', 'الهاتف الإضافي', 'اسم حساب الواتساب / اللقب', 'ملاحظات', 'إجمالي الطلبات', 'تاريخ التسجيل'];
-    const rows = customers.map(c => [
-      c.fullName,
-      c.whatsappNumber,
-      c.additionalPhone || '',
-      c.nickname || '',
-      c.notes || '',
-      c.totalOrdersCount || 0,
-      c.createdAt ? formatDateTimeRiyadh(c.createdAt) : '',
-    ]);
+    const rows = customers.map(c => {
+      const custOrdersCount = orders.filter(o => o.customerId === c.id).length || c.totalOrdersCount || 0;
+      return [
+        c.fullName,
+        c.whatsappNumber,
+        c.additionalPhone || '',
+        c.nickname || '',
+        c.notes || '',
+        custOrdersCount,
+        c.createdAt ? formatDateTimeRiyadh(c.createdAt) : '',
+      ];
+    });
 
     downloadCsv(`customers-${todayRiyadh()}`, headers, rows, [5]);
     toast.success(`تم تصدير ${customers.length} عميل إلى ملف CSV بنجاح.`);
@@ -327,12 +330,18 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
   const processImportList = (list: ParsedContact[]) => {
     const existing = DataService.getCustomers();
     const marked = list.map(item => {
-      const cleanW = cleanPhone(item.whatsappNumber);
+      const val = validateWhatsappNumber(item.whatsappNumber);
+      const normalizedW = val.valid ? val.normalized : item.whatsappNumber;
+      const cleanW = cleanPhone(normalizedW);
       const isDup = existing.some(e => {
         const ePhone = cleanPhone(e.whatsappNumber);
         return ePhone === cleanW || (cleanW.length >= 9 && ePhone.endsWith(cleanW)) || (ePhone.length >= 9 && cleanW.endsWith(ePhone));
       });
-      return { ...item, isDuplicate: isDup };
+      return { 
+        ...item, 
+        whatsappNumber: normalizedW,
+        isDuplicate: isDup 
+      };
     });
     setParsedContacts(marked);
   };
@@ -598,9 +607,15 @@ export const CustomersCRM: React.FC<CustomersCRMProps> = ({ currentUser }) => {
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center font-bold">
-                      <span className="px-2.5 py-1 bg-slate-100 rounded-xl text-slate-800 text-xs">
-                        {customer.totalOrdersCount}
-                      </span>
+                      {(() => {
+                        const actualOrdersCount = orders.filter(o => o.customerId === customer.id).length;
+                        const countToDisplay = actualOrdersCount > 0 ? actualOrdersCount : (customer.totalOrdersCount || 0);
+                        return (
+                          <span className={`px-2.5 py-1 rounded-xl text-xs ${countToDisplay > 0 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                            {countToDisplay}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center gap-1 justify-center flex-wrap">

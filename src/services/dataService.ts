@@ -1857,14 +1857,39 @@ export class DataService {
     // Cloud push
     if (getIsConfigured() && getSupabase() && upsertList.length > 0) {
       try {
-        // إذا كان تسجيلاً ذاتياً عبر رابط المعتمر (?register=true) أو بدون جلسة موظف، نستخدم insert دائماً
-        // لأن سياسات RLS للزائر المجهول تقبل INSERT فقط وترفض upsert
+        // إذا كان تسجيلاً ذاتياً عبر رابط المعتمر (?register=true) أو بدون جلسة موظف
         const isSelfRegister = (typeof window !== 'undefined' && window.location.search.includes('register=true')) || !currentUser;
         if (isSelfRegister) {
-          const { error } = await getSupabase()!.from('customers').insert(upsertList);
-          if (error) {
-            console.error('Failed to insert customer to Supabase (self-register):', error);
-            throw new Error(error.message || 'تعذر حفظ بيانات المعتمر في السحابة.');
+          // محاولة استدعاء دالة التسجيل الذاتي السحابية الآمنة أولاً (rpc_self_register_customer)
+          let rpcSuccess = false;
+          if (customersToImport.length === 1) {
+            const single = customersToImport[0];
+            try {
+              const { data: rpcRes, error: rpcErr } = await getSupabase()!.rpc('rpc_self_register_customer', {
+                p_full_name: single.fullName,
+                p_whatsapp_number: single.whatsappNumber,
+                p_additional_phone: single.additionalPhone || null,
+                p_nickname: single.nickname || null,
+                p_notes: single.notes || null,
+              });
+              if (!rpcErr && rpcRes && rpcRes.success) {
+                rpcSuccess = true;
+              }
+            } catch (rpcErr) {
+              console.warn('rpc_self_register_customer not yet available or failed, falling back:', rpcErr);
+            }
+          }
+
+          if (!rpcSuccess) {
+            const { error } = await getSupabase()!.from('customers').insert(upsertList);
+            if (error) {
+              if (error.code === '23505') {
+                console.warn('Customer already exists in cloud (23505), registration successful.');
+              } else {
+                console.error('Failed to insert customer to Supabase (self-register):', error);
+                throw new Error(error.message || 'تعذر حفظ بيانات المعتمر في السحابة.');
+              }
+            }
           }
         } else {
           const { error } = await getSupabase()!.from('customers').upsert(upsertList, { onConflict: 'id' });

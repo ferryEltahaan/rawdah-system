@@ -1065,3 +1065,167 @@ DO $$ BEGIN
     CREATE POLICY "Allow anon upload permits" ON storage.objects
         FOR INSERT TO anon WITH CHECK (bucket_id = 'permits');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 12. تحسينات العملاء وقاعدة البيانات (Phase 3: Customers & CRM)
+-- ══════════════════════════════════════════════════════════════════════════════
+
+-- 12.1 فهارس تسريع الاستعلام والبحث عن العملاء
+CREATE INDEX IF NOT EXISTS idx_customers_whatsapp ON public.customers(whatsapp_number);
+CREATE INDEX IF NOT EXISTS idx_customers_full_name ON public.customers(full_name);
+CREATE INDEX IF NOT EXISTS idx_customers_created_at ON public.customers(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_orders_customer_id ON public.sales_orders(customer_id);
+
+-- 12.2 تريجر المزامنة الآلية لإحصائيات العميل (الطلبات والمبالغ المسددة)
+CREATE OR REPLACE FUNCTION public.fn_sync_customer_stats()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_target_cust_id UUID;
+BEGIN
+    v_target_cust_id := COALESCE(NEW.customer_id, OLD.customer_id);
+
+    IF v_target_cust_id IS NOT NULL THEN
+        UPDATE public.customers
+        SET total_orders_count = (
+                SELECT COUNT(*) FROM public.sales_orders 
+                WHERE customer_id = v_target_cust_id 
+                  AND order_status != 'cancelled'
+            ),
+            total_spent = (
+                SELECT COALESCE(SUM(paid_amount), 0) FROM public.sales_orders 
+                WHERE customer_id = v_target_cust_id 
+                  AND order_status != 'cancelled'
+            ),
+            updated_at = (NOW() AT TIME ZONE 'Asia/Riyadh')
+        WHERE id = v_target_cust_id;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_customer_stats ON public.sales_orders;
+CREATE TRIGGER trg_sync_customer_stats
+AFTER INSERT OR UPDATE OR DELETE ON public.sales_orders
+FOR EACH ROW EXECUTE FUNCTION public.fn_sync_customer_stats();
+
+-- 12.3 دالة التسجيل الذاتي الآمن للعميل (rpc_self_register_customer)
+DROP FUNCTION IF EXISTS rpc_self_register_customer(TEXT, TEXT, TEXT, TEXT, TEXT);
+CREATE OR REPLACE FUNCTION rpc_self_register_customer(
+    p_full_name TEXT,
+    p_whatsapp_number TEXT,
+    p_additional_phone TEXT DEFAULT NULL,
+    p_nickname TEXT DEFAULT NULL,
+    p_notes TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_clean_name TEXT;
+    v_clean_phone TEXT;
+    v_phone_digits TEXT;
+    v_customer_id UUID;
+    v_existing_notes TEXT;
+    v_is_new BOOLEAN := false;
+BEGIN
+    v_clean_name := trim(COALESCE(p_full_name, ''));
+    v_clean_phone := trim(COALESCE(p_whatsapp_number, ''));
+    
+    IF length(v_clean_name) < 2 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'invalid_name', 'message', 'يرجى إدخال اسم صحيح.');
+    END IF;
+
+    IF length(v_clean_phone) < 8 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'invalid_phone', 'message', 'يرجى إدخال رقم واتساب صحيح.');
+    END IF;
+
+    v_phone_digits := regexp_replace(v_clean_phone, '\D', '', 'g');
+    IF length(v_phone_digits) >= 9 THEN
+        v_phone_digits := right(v_phone_digits, 9);
+    END IF;
+
+    SELECT id, notes INTO v_customer_id, v_existing_notes
+    FROM public.customers
+    WHERE whatsapp_number = v_clean_phone
+       OR (length(v_phone_digits) >= 9 AND regexp_replace(whatsapp_number, '\D', '', 'g') LIKE '%' || v_phone_digits)
+    LIMIT 1;
+
+    IF v_customer_id IS NOT NULL THEN
+        UPDATE public.customers
+        SET full_name = CASE WHEN length(v_clean_name) > 0 THEN v_clean_name ELSE full_name END,
+            nickname = COALESCE(nullif(trim(p_nickname), ''), nickname),
+            additional_phone = COALESCE(nullif(trim(p_additional_phone), ''), additional_phone),
+            notes = CASE 
+                WHEN p_notes IS NOT NULL AND length(trim(p_notes)) > 0 
+                THEN COALESCE(v_existing_notes || E'\n' || trim(p_notes), trim(p_notes))
+                ELSE notes
+            END,
+            updated_at = (NOW() AT TIME ZONE 'Asia/Riyadh')
+        WHERE id = v_customer_id;
+        v_is_new := false;
+    ELSE
+        v_customer_id := uuid_generate_v4();
+        INSERT INTO public.customers (
+            id,
+            full_name,
+            whatsapp_number,
+            additional_phone,
+            nickname,
+            notes,
+            total_orders_count,
+            total_spent,
+            created_at,
+            updated_at
+        ) VALUES (
+            v_customer_id,
+            v_clean_name,
+            v_clean_phone,
+            nullif(trim(p_additional_phone), ''),
+            nullif(trim(p_nickname), ''),
+            nullif(trim(p_notes), ''),
+            0,
+            0,
+            (NOW() AT TIME ZONE 'Asia/Riyadh'),
+            (NOW() AT TIME ZONE 'Asia/Riyadh')
+        );
+        v_is_new := true;
+    END IF;
+
+    INSERT INTO public.audit_logs (
+        action_type,
+        entity_name,
+        entity_id,
+        details
+    ) VALUES (
+        CASE WHEN v_is_new THEN 'SELF_REGISTER_CUSTOMER' ELSE 'SELF_REGISTER_UPDATE' END,
+        'customers',
+        v_customer_id,
+        jsonb_build_object(
+            'full_name', v_clean_name,
+            'whatsapp_number', v_clean_phone,
+            'is_new', v_is_new
+        )
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'customer_id', v_customer_id,
+        'is_new', v_is_new
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'error', 'server_error',
+        'detail', SQLERRM
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION rpc_self_register_customer(TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
