@@ -4666,4 +4666,89 @@ export class DataService {
       // ignore
     }
   }
+
+  /** تصدير نسخة احتياطية شاملة للنظام بصيغة JSON قابلة للتنزيل */
+  static exportFullBackup(): { filename: string; content: string } {
+    const backupData = {
+      system: 'rawdah-reservation-system',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      exportedBy: this.getCurrentUser().fullName,
+      data: {
+        customers: this.getCustomers(),
+        orders: this.getOrders(),
+        permits: this.getPermits(),
+        financialAccounts: this.getFinancialAccounts(),
+        smsMessages: this.getSmsMessages(),
+        companySettings: this.getCompanySettings(),
+        messageTemplates: this.getMessageTemplates(),
+        auditLogs: this.getAuditLogs(),
+      }
+    };
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `rawdah-full-backup-${dateStr}.json`;
+    return {
+      filename,
+      content: JSON.stringify(backupData, null, 2),
+    };
+  }
+
+  /** استيراد نسخة احتياطية شاملة والتحقق منها وتطبيقها محلياً وسحابياً */
+  static async importFullBackup(jsonString: string): Promise<{ success: boolean; message: string; counts?: Record<string, number> }> {
+    const currentUser = this.getCurrentUser();
+    if (currentUser.role !== 'super_admin') {
+      return { success: false, message: 'عذراً، استيراد واسترجاع النسخ الاحتياطية مقتصر على المدير العام فقط.' };
+    }
+
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (!parsed || typeof parsed !== 'object' || !parsed.data) {
+        return { success: false, message: 'الملف غير صالح، لا يحتوي على بنية النسخة الاحتياطية المعتمدة.' };
+      }
+
+      const { data } = parsed;
+      const counts: Record<string, number> = {};
+
+      if (Array.isArray(data.customers)) {
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, data.customers);
+        counts['العملاء'] = data.customers.length;
+      }
+      if (Array.isArray(data.orders)) {
+        saveToStorage(STORAGE_KEYS.ORDERS, data.orders);
+        counts['الطلبات'] = data.orders.length;
+      }
+      if (Array.isArray(data.permits)) {
+        saveToStorage(STORAGE_KEYS.PERMITS, data.permits);
+        counts['التصاريح'] = data.permits.length;
+      }
+      if (Array.isArray(data.financialAccounts)) {
+        saveToStorage(STORAGE_KEYS.ACCOUNTS, data.financialAccounts);
+        counts['الحسابات المالية'] = data.financialAccounts.length;
+      }
+      if (Array.isArray(data.smsMessages)) {
+        saveToStorage(STORAGE_KEYS.SMS, data.smsMessages);
+        counts['رسائل SMS'] = data.smsMessages.length;
+      }
+      if (data.companySettings && typeof data.companySettings === 'object') {
+        saveToStorage(STORAGE_KEYS.SETTINGS, data.companySettings);
+      }
+      if (data.messageTemplates && typeof data.messageTemplates === 'object') {
+        saveToStorage(STORAGE_KEYS.MESSAGE_TEMPLATES, data.messageTemplates);
+      }
+
+      this.addAuditLog(currentUser.id, currentUser.fullName, 'IMPORT_BACKUP', 'system', 'backup', {
+        exportedAt: parsed.exportedAt,
+        counts,
+      });
+
+      return {
+        success: true,
+        message: 'تم استرجاع النسخة الاحتياطية بنجاح وتحديث كافة السجلات!',
+        counts,
+      };
+    } catch (err: any) {
+      console.error('Import backup error:', err);
+      return { success: false, message: `تعذر قراءة ملف النسخة الاحتياطية: ${err?.message || 'خطأ غير معروف'}` };
+    }
+  }
 }

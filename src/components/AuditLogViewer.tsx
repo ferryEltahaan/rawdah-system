@@ -21,7 +21,8 @@ import {
   UserMinus,
   Banknote,
   Bell,
-  Scale
+  Scale,
+  Database
 } from 'lucide-react';
 import { AuditLog } from '../types';
 import { DataService } from '../services/dataService';
@@ -52,6 +53,7 @@ const ACTION_LABELS: Record<string, string> = {
   SEND_REMINDER: 'إرسال تذكير سداد',
   DELETE_FINANCIAL_ACCOUNT: 'حذف حساب مالي',
   ADJUST_ACCOUNT_BALANCE: 'تسوية رصيد حساب',
+  IMPORT_BACKUP: 'استرجاع نسخة احتياطية',
 };
 
 const formatDetailValue = (value: unknown): string => {
@@ -279,6 +281,13 @@ export const AuditLogViewer: React.FC = () => {
             <span>تسوية رصيد حساب</span>
           </span>
         );
+      case 'IMPORT_BACKUP':
+        return (
+          <span className="bg-purple-50 text-purple-800 border border-purple-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Database className="w-3 h-3 text-purple-600" />
+            <span>استرجاع نسخة احتياطية</span>
+          </span>
+        );
       default:
         return (
           <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] px-2.5 py-1 rounded-full font-bold">
@@ -361,6 +370,7 @@ export const AuditLogViewer: React.FC = () => {
           <option value="DELETE_PERMIT">حذف تصريح</option>
           <option value="DELETE_FINANCIAL_ACCOUNT">حذف حساب مالي</option>
           <option value="ADJUST_ACCOUNT_BALANCE">تسوية رصيد حساب</option>
+          <option value="IMPORT_BACKUP">استرجاع نسخة احتياطية</option>
           <option value="UPDATE_PERMISSIONS">تعديل صلاحيات موظف</option>
           <option value="UPDATE_PROFILE">تحديث ملف شخصي</option>
           <option value="TOGGLE_EMPLOYEE_STATUS">إيقاف/تفعيل حساب موظف</option>

@@ -7,6 +7,10 @@ import {
   MessageSquare,
   RotateCcw,
   HelpCircle,
+  Download,
+  UploadCloud,
+  Database,
+  AlertTriangle,
 } from 'lucide-react';
 import { CompanySettings, MessageTemplates } from '../types';
 import { DataService, initialMessageTemplates } from '../services/dataService';
@@ -31,6 +35,50 @@ export const CompanySettingsView: React.FC = () => {
   const [templates, setTemplates] = useState<MessageTemplates>(DataService.getMessageTemplates());
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const currentUser = DataService.getCurrentUser();
+
+  const handleExportBackup = () => {
+    try {
+      const { filename, content } = DataService.exportFullBackup();
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('تم تصدير وتحميل النسخة الاحتياطية الشاملة بنجاح!');
+    } catch (e: any) {
+      toast.error('فشل تصدير النسخة الاحتياطية.');
+    }
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm('تنبيه أمني هام: استرجاع نسخة احتياطية سيقوم بتحديث واستبدال سجلات النظام بالبيانات المحفوظة في الملف. هل تريد المتابعة؟')) {
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const res = await DataService.importFullBackup(text);
+      if (res.success) {
+        toast.success(res.message);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        toast.error(res.message);
+      }
+    } catch (err) {
+      toast.error('حدث خطأ أثناء قراءة ملف النسخة الاحتياطية.');
+    } finally {
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     // جلب مباشر من السحابة لضمان عرض أحدث بيانات المؤسسة وقوالب الرسائل
@@ -383,6 +431,55 @@ export const CompanySettingsView: React.FC = () => {
         </div>
 
       </form>
+
+      {/* قسم النسخ الاحتياطي واسترجاع البيانات */}
+      <div className="bg-white border border-slate-200/80 rounded-3xl p-6 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">النسخ الاحتياطي واسترجاع بيانات النظام (Backup & Restore)</h3>
+              <p className="text-[11px] text-slate-500">حفظ نسخة احتياطية شاملة لجميع العملاء، الطلبات، التصاريح، الحسابات وسجلات التدقيق.</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleExportBackup}
+            className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm shadow-purple-600/20 cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>تنزيل نسخة احتياطية كاملة (JSON)</span>
+          </button>
+        </div>
+
+        {currentUser.role === 'super_admin' && (
+          <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-amber-900">استرجاع نسخة احتياطية سابقة (للمدير العام فقط)</p>
+                <p className="text-[11px] text-amber-700 mt-0.5">
+                  يرجى الحذر عند استرجاع البيانات، سيتم تحديث وتعبئة السجلات الحالية بالبيانات الموجودة في ملف النسخة الاحتياطية.
+                </p>
+              </div>
+            </div>
+
+            <label className="flex items-center justify-center gap-2 bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 font-bold px-4 py-2.5 rounded-xl text-xs transition-all cursor-pointer shadow-xs shrink-0">
+              <UploadCloud className="w-4 h-4 text-amber-700" />
+              <span>استرجاع من ملف JSON</span>
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportBackup}
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+      </div>
 
       {/* أدوات البيانات التجريبية محذوفة من الإنتاج — لا تعيد إضافتها */}
 
