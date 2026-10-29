@@ -20,7 +20,8 @@ import {
   UserPlus,
   UserMinus,
   Banknote,
-  Bell
+  Bell,
+  Scale
 } from 'lucide-react';
 import { AuditLog } from '../types';
 import { DataService } from '../services/dataService';
@@ -31,10 +32,14 @@ const ACTION_LABELS: Record<string, string> = {
   CLAIM_PERMIT: 'سحب وتخصيص تصريح',
   RETURN_PERMIT: 'إرجاع تصريح للمخزون',
   MATCH_SMS: 'مطابقة سداد SMS',
+  UNMATCH_SMS: 'إلغاء مطابقة SMS',
+  DELETE_SMS: 'حذف رسالة SMS',
   CREATE_ORDER: 'إنشاء طلب جديد',
   UPDATE_ORDER: 'تحديث بيانات طلب',
+  DELETE_ORDER: 'حذف طلب بيع',
   UPLOAD_PERMITS: 'رفع دفعة تصاريح',
   DELETE_PERMIT: 'حذف تصريح',
+  ARCHIVE_PERMITS: 'أرشفة دفعة تصاريح',
   DELETE_PROFILE: 'حذف موظف',
   UPDATE_PERMISSIONS: 'تعديل صلاحيات موظف',
   UPDATE_PROFILE: 'تحديث ملف الموظف الشخصي',
@@ -45,6 +50,8 @@ const ACTION_LABELS: Record<string, string> = {
   DELETE_CUSTOMER: 'حذف عميل',
   RECORD_PAYMENT: 'تسجيل سداد مباشر',
   SEND_REMINDER: 'إرسال تذكير سداد',
+  DELETE_FINANCIAL_ACCOUNT: 'حذف حساب مالي',
+  ADJUST_ACCOUNT_BALANCE: 'تسوية رصيد حساب',
 };
 
 const formatDetailValue = (value: unknown): string => {
@@ -230,6 +237,48 @@ export const AuditLogViewer: React.FC = () => {
             <span>إرسال تذكير سداد</span>
           </span>
         );
+      case 'DELETE_ORDER':
+        return (
+          <span className="bg-rose-50 text-rose-800 border border-rose-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Trash2 className="w-3 h-3 text-rose-600" />
+            <span>حذف طلب بيع</span>
+          </span>
+        );
+      case 'ARCHIVE_PERMITS':
+        return (
+          <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Archive className="w-3 h-3 text-indigo-600" />
+            <span>أرشفة دفعة تصاريح</span>
+          </span>
+        );
+      case 'UNMATCH_SMS':
+        return (
+          <span className="bg-orange-50 text-orange-800 border border-orange-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <RotateCcw className="w-3 h-3 text-orange-600" />
+            <span>إلغاء مطابقة SMS</span>
+          </span>
+        );
+      case 'DELETE_SMS':
+        return (
+          <span className="bg-rose-50 text-rose-800 border border-rose-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Trash2 className="w-3 h-3 text-rose-600" />
+            <span>حذف رسالة SMS</span>
+          </span>
+        );
+      case 'DELETE_FINANCIAL_ACCOUNT':
+        return (
+          <span className="bg-rose-50 text-rose-800 border border-rose-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Trash2 className="w-3 h-3 text-rose-600" />
+            <span>حذف حساب مالي</span>
+          </span>
+        );
+      case 'ADJUST_ACCOUNT_BALANCE':
+        return (
+          <span className="bg-teal-50 text-teal-800 border border-teal-200 text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-xs">
+            <Scale className="w-3 h-3 text-teal-600" />
+            <span>تسوية رصيد حساب</span>
+          </span>
+        );
       default:
         return (
           <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] px-2.5 py-1 rounded-full font-bold">
@@ -296,16 +345,22 @@ export const AuditLogViewer: React.FC = () => {
           <option value="CLAIM_PERMIT">سحب وتخصيص تصريح</option>
           <option value="RETURN_PERMIT">إرجاع للمخزون</option>
           <option value="MATCH_SMS">مطابقة سداد SMS</option>
+          <option value="UNMATCH_SMS">إلغاء مطابقة SMS</option>
+          <option value="DELETE_SMS">حذف رسالة SMS</option>
           <option value="RECORD_PAYMENT">تسجيل سداد مباشر</option>
           <option value="SEND_REMINDER">إرسال تذكير سداد</option>
           <option value="CREATE_ORDER">إنشاء طلب</option>
           <option value="UPDATE_ORDER">تحديث بيانات طلب</option>
+          <option value="DELETE_ORDER">حذف طلب بيع</option>
           <option value="ARCHIVE_ORDER">أرشفة/استرجاع طلب</option>
           <option value="CREATE_CUSTOMER">تسجيل/استيراد عميل</option>
           <option value="UPDATE_CUSTOMER">تحديث بيانات عميل</option>
           <option value="DELETE_CUSTOMER">حذف عميل</option>
           <option value="UPLOAD_PERMITS">رفع تصاريح</option>
+          <option value="ARCHIVE_PERMITS">أرشفة دفعة تصاريح</option>
           <option value="DELETE_PERMIT">حذف تصريح</option>
+          <option value="DELETE_FINANCIAL_ACCOUNT">حذف حساب مالي</option>
+          <option value="ADJUST_ACCOUNT_BALANCE">تسوية رصيد حساب</option>
           <option value="UPDATE_PERMISSIONS">تعديل صلاحيات موظف</option>
           <option value="UPDATE_PROFILE">تحديث ملف شخصي</option>
           <option value="TOGGLE_EMPLOYEE_STATUS">إيقاف/تفعيل حساب موظف</option>
