@@ -23,6 +23,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 --    الغرض: التحقق من اسم المستخدم وكلمة المرور بأمان على السيرفر
 --    المستدعي: LoginScreen.tsx عند محاولة تسجيل الدخول
 -- ══════════════════════════════════════════════════════════════════════════════
+DROP FUNCTION IF EXISTS rpc_authenticate_user(TEXT, TEXT);
 CREATE OR REPLACE FUNCTION rpc_authenticate_user(
     p_username TEXT,
     p_password TEXT
@@ -121,6 +122,8 @@ GRANT EXECUTE ON FUNCTION rpc_authenticate_user(TEXT, TEXT) TO anon, authenticat
 --    الغرض: إضافة أو تحديث موظف وتشفير كلمة المرور مباشرة على السيرفر
 --    المستدعي: EmployeesAndRolesView.tsx عند حفظ بيانات موظف
 -- ══════════════════════════════════════════════════════════════════════════════
+DROP FUNCTION IF EXISTS rpc_save_staff_user(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS rpc_save_staff_user;
 CREATE OR REPLACE FUNCTION rpc_save_staff_user(
     p_username      TEXT,
     p_password      TEXT,
