@@ -10,14 +10,14 @@ import {
 
 export const initialCompanySettings: CompanySettings = {
   id: '00000000-0000-0000-0000-000000000001',
-  companyNameAr: 'مؤسسة حجز تصاريح الروضة الشريفة',
-  companyNameEn: 'Rawdah Permits Enterprise',
+  companyNameAr: 'مناسك الخير لتصاريح الروضة الشريفة',
+  companyNameEn: 'Al-Khayr Permits - Noble Rawdah Access',
   address: 'المدينة المنورة - المنطقة المركزية',
   primaryPhone: '+966500000000',
   secondaryPhone: '',
   whatsappNumber: '+966500000000',
-  email: 'info@rawdah-system.com',
-  logoUrl: '',
+  email: 'info@alkhayr-rawdah.com',
+  logoUrl: '/logo.png',
   taxNumber: '',
   commercialRegistry: '',
   invoiceFooterNote: 'تقبل الله زيارتكم وطاعتكم ونسألكم صالح الدعاء في الروضة الشريفة',
