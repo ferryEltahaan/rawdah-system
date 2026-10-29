@@ -159,6 +159,8 @@ CREATE TABLE IF NOT EXISTS permits (
     locked_at TIMESTAMPTZ,
 
     notes TEXT,
+    is_archived BOOLEAN DEFAULT FALSE,
+    archived_at TIMESTAMPTZ,
     created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'Asia/Riyadh'),
     updated_at TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'Asia/Riyadh')
@@ -249,6 +251,10 @@ ALTER TABLE sales_orders
   ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS payments JSONB DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMPTZ;
+
+ALTER TABLE permits
+  ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
 ALTER TABLE financial_accounts
   ADD COLUMN IF NOT EXISTS currency VARCHAR(10);
@@ -1037,3 +1043,25 @@ END $$;
 --   LEFT JOIN public.profiles p ON p.id = a.user_id
 --  WHERE a.action_type = 'ADJUST_BALANCE'
 --  ORDER BY a.created_at DESC;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 11. إعداد مساحة تخزين صور التصاريح (Supabase Storage Bucket: permits)
+-- ══════════════════════════════════════════════════════════════════════════════
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('permits', 'permits', true)
+ON CONFLICT (id) DO NOTHING;
+
+DO $$ BEGIN
+    CREATE POLICY "Public Access permits" ON storage.objects
+        FOR SELECT TO public USING (bucket_id = 'permits');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow authenticated upload permits" ON storage.objects
+        FOR INSERT TO authenticated WITH CHECK (bucket_id = 'permits');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow anon upload permits" ON storage.objects
+        FOR INSERT TO anon WITH CHECK (bucket_id = 'permits');
+EXCEPTION WHEN duplicate_object THEN null; END $$;

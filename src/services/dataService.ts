@@ -544,6 +544,8 @@ export class DataService {
           assignedByUserName: p.assigned_by_user_name,
           assignedAt: p.assigned_at,
           notes: p.notes,
+          isArchived: p.is_archived ?? false,
+          archivedAt: p.archived_at || undefined,
           createdAt: p.created_at,
         }));
 
@@ -1978,8 +1980,8 @@ export class DataService {
             status: 'assigned',
             assigned_to_customer_id: customerId,
             assigned_customer_name: customer.fullName,
-            // assigned_by_user_id مرجع UUID إلى profiles(auth) — معرّف المستخدم المحلي ليس UUID صالحاً
-            assigned_by_user_id: null,
+            // assigned_by_user_id مرجع UUID إلى profiles — نمرر معرف الموظف إذا كان UUID صالحاً لضمان التدقيق الأمني
+            assigned_by_user_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id) ? currentUser.id : null,
             assigned_by_user_name: currentUser.fullName,
             assigned_at: claimedAt,
           })
@@ -2332,9 +2334,11 @@ export class DataService {
   static autoExpirePermits(): number {
     const permits = this.getPermits();
     let count = 0;
+    const newlyExpiredIds: string[] = [];
     const updated = permits.map(p => {
       if (p.status === 'available' && isSlotPast(p.slotDate, p.slotHour, p.slotMinute)) {
         count++;
+        newlyExpiredIds.push(p.id);
         return { ...p, status: 'expired' as const };
       }
       return p;
@@ -2342,9 +2346,9 @@ export class DataService {
 
     if (count > 0) {
       saveToStorage(STORAGE_KEYS.PERMITS, updated);
-      if (getIsConfigured() && getSupabase()) {
-        const expiredIds = updated.filter(p => p.status === 'expired').map(p => p.id);
-        Promise.resolve(getSupabase()!.from('permits').update({ status: 'expired' }).in('id', expiredIds)).catch(() => {});
+      // تحديث سحابي مركز فقط للتصاريح التي انتهت صلاحيتها للتو لمنع إرسال مصفوفات ضخمة متكررة
+      if (getIsConfigured() && getSupabase() && newlyExpiredIds.length > 0) {
+        Promise.resolve(getSupabase()!.from('permits').update({ status: 'expired' }).in('id', newlyExpiredIds)).catch(() => {});
       }
     }
     return count;

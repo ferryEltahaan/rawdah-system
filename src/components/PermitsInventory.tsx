@@ -67,6 +67,23 @@ const countPermitStatuses = (list: Permit[]) => ({
   expired: list.filter(p => p.status === 'expired').length,
 });
 
+/** فترات الزيارة الرسمية المعتمدة بالروضة الشريفة (رجال / نساء) */
+export const getSlotGender = (hour: number): { type: 'women' | 'men'; label: string; badgeClass: string } => {
+  // فترات النساء الرسمية: الصباحية (06:00 إلى 11:00) والمسائية (21:00 إلى 00:00)
+  if ((hour >= 6 && hour < 11) || (hour >= 21 && hour <= 23)) {
+    return {
+      type: 'women',
+      label: 'فترة نساء 🧕',
+      badgeClass: 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200',
+    };
+  }
+  return {
+    type: 'men',
+    label: 'فترة رجال 🧔',
+    badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
+  };
+};
+
 export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser }) => {
   const toast = useToast();
   // تحميل/مشاركة صور التصاريح بشكل يعمل على الجوال (data URL → Blob)
@@ -579,6 +596,9 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
             <span>اختر ساعة الحجز من الـ 24 ساعة:</span>
           </span>
           <div className="flex items-center gap-3">
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getSlotGender(selectedHour).badgeClass}`}>
+              {getSlotGender(selectedHour).label}
+            </span>
             <span className="text-xs text-emerald-700 font-bold">
               الساعة المختارة: {String(selectedHour).padStart(2, '0')}:00 (بها {getHourStats(selectedHour).available} متاح)
             </span>
@@ -622,7 +642,18 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
                     : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900'
                 }`}
               >
-                <div className="font-mono text-xs font-bold">{hourLabel}</div>
+                <div className="flex items-center justify-center gap-1">
+                  <span className="font-mono text-xs font-bold">{hourLabel}</span>
+                  <span className={`text-[8px] font-bold px-1 rounded ${
+                    isSelected
+                      ? 'bg-emerald-700/80 text-emerald-100'
+                      : getSlotGender(h).type === 'women'
+                      ? 'bg-fuchsia-100 text-fuchsia-700'
+                      : 'bg-sky-100 text-sky-700'
+                  }`}>
+                    {getSlotGender(h).type === 'women' ? 'نساء' : 'رجال'}
+                  </span>
+                </div>
                 <div className={`text-[10px] mt-0.5 font-semibold ${isSelected ? 'text-emerald-100' : 'text-emerald-700'}`}>
                   {stats.available > 0
                     ? `${stats.available} متاح`
@@ -691,6 +722,9 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
           <div className="flex items-center gap-3">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <span>تصاريح الفترة {String(selectedHour).padStart(2, '0')}:{String(selectedMinute).padStart(2, '0')}</span>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${getSlotGender(selectedHour).badgeClass}`}>
+                {getSlotGender(selectedHour).label}
+              </span>
               <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs px-3 py-0.5 rounded-full font-bold">
                 {currentSlotPermits.length} تصريح
               </span>
