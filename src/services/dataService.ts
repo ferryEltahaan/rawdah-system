@@ -4733,7 +4733,7 @@ export class DataService {
         saveToStorage(STORAGE_KEYS.SETTINGS, data.companySettings);
       }
       if (data.messageTemplates && typeof data.messageTemplates === 'object') {
-        saveToStorage(STORAGE_KEYS.MESSAGE_TEMPLATES, data.messageTemplates);
+        saveToStorage(STORAGE_KEYS.TEMPLATES, data.messageTemplates);
       }
 
       this.addAuditLog(currentUser.id, currentUser.fullName, 'IMPORT_BACKUP', 'system', 'backup', {
