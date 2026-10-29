@@ -2885,7 +2885,7 @@ export class DataService {
       ...orderData,
       id: generateUUID(),
       orderNumber: nextOrderNumber,
-      remainingAmount: orderData.totalAmount - orderData.paidAmount,
+      remainingAmount: Math.max(0, Math.round((orderData.totalAmount - orderData.paidAmount) * 100) / 100),
       payments: initialPayments,
       createdAt: new Date().toISOString(),
     };
@@ -2896,10 +2896,10 @@ export class DataService {
     // البيع يتم احتسابه هنا (الطلب) لا عند سحب التصريح — بمبلغ الطلب الفعلي
     this.updateCustomerOrderStats(newOrder.customerId, 1, newOrder.totalAmount);
 
-    // Push order to Cloud
+    // Push order to Cloud — نمرر order_number لضمان تطابق رقم الطلب بين السحابة وجميع الأجهزة
     await cloudInsertOrderResilient({
       id: newOrder.id,
-      // order_number هو BIGSERIAL — يُولَّد تلقائياً في Supabase
+      order_number: newOrder.orderNumber,
       customer_id: newOrder.customerId,
       customer_name: newOrder.customerName,
       customer_whatsapp: newOrder.customerWhatsapp,
@@ -3025,6 +3025,171 @@ export class DataService {
         });
       }
     }
+  }
+
+  /** تعديل تفاصيل الطلب (الموعد، الأعداد، السعر، العملة، الملاحظات) */
+  static async updateOrder(
+    orderId: string,
+    updates: Partial<Pick<SalesOrder, 'targetDate' | 'targetTime' | 'permitsCountMale' | 'permitsCountFemale' | 'unitPrice' | 'currency' | 'notes' | 'orderType'>>
+  ): Promise<{ success: boolean; message: string; order?: SalesOrder }> {
+    const orders = this.getOrders();
+    const idx = orders.findIndex(o => o.id === orderId);
+    if (idx === -1) return { success: false, message: 'الطلب غير موجود.' };
+
+    const order = orders[idx];
+
+    let updatedMale = updates.permitsCountMale !== undefined ? Math.max(0, updates.permitsCountMale) : order.permitsCountMale;
+    let updatedFemale = updates.permitsCountFemale !== undefined ? Math.max(0, updates.permitsCountFemale) : order.permitsCountFemale;
+    let updatedCount = (updatedMale ?? 0) + (updatedFemale ?? 0);
+    if (updatedCount === 0 && (updates.permitsCountMale !== undefined || updates.permitsCountFemale !== undefined)) {
+      updatedCount = order.permitsCount;
+    } else if (updates.permitsCountMale === undefined && updates.permitsCountFemale === undefined) {
+      updatedCount = order.permitsCount;
+    }
+
+    const unitPrice = updates.unitPrice !== undefined ? Math.max(0, updates.unitPrice) : order.unitPrice;
+    const totalAmount = Math.round((updatedCount * unitPrice) * 100) / 100;
+    const remainingAmount = Math.max(0, Math.round((totalAmount - order.paidAmount) * 100) / 100);
+
+    const updatedOrder: SalesOrder = {
+      ...order,
+      targetDate: updates.targetDate || order.targetDate,
+      targetTime: updates.targetTime || order.targetTime,
+      permitsCount: updatedCount,
+      permitsCountMale: updatedMale,
+      permitsCountFemale: updatedFemale,
+      orderType: updates.orderType || order.orderType,
+      unitPrice,
+      totalAmount,
+      remainingAmount,
+      currency: updates.currency || order.currency,
+      notes: updates.notes !== undefined ? updates.notes : order.notes,
+    };
+
+    orders[idx] = updatedOrder;
+    saveToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    const currentUser = this.getCurrentUser();
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'UPDATE_ORDER', 'sales_orders', orderId, {
+      orderNumber: order.orderNumber,
+      updates,
+    });
+
+    await cloudUpdateOrderResilient(orderId, {
+      target_date: updatedOrder.targetDate,
+      target_time: updatedOrder.targetTime,
+      permits_count: updatedOrder.permitsCount,
+      permits_count_male: updatedOrder.permitsCountMale ?? null,
+      permits_count_female: updatedOrder.permitsCountFemale ?? null,
+      order_type: updatedOrder.orderType,
+      unit_price: updatedOrder.unitPrice,
+      total_amount: updatedOrder.totalAmount,
+      remaining_amount: updatedOrder.remainingAmount,
+      currency: updatedOrder.currency,
+      notes: updatedOrder.notes ?? null,
+    });
+
+    return {
+      success: true,
+      message: `تم تحديث بيانات الطلب #${order.orderNumber} بنجاح.`,
+      order: updatedOrder,
+    };
+  }
+
+  /** حذف طلب نهائياً (مخصص للمدير العام مع إعادة أي تصاريح كانت مسحوبة للمخزون) */
+  static async deleteOrder(orderId: string): Promise<{ success: boolean; message: string }> {
+    const currentUser = this.getCurrentUser();
+    if (currentUser.role !== 'super_admin') {
+      return { success: false, message: 'عذراً، حذف الطلبات مخصص للمدير العام فقط.' };
+    }
+
+    const orders = this.getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return { success: false, message: 'الطلب غير موجود.' };
+
+    // 1. فك ربط أي تصاريح مرتبطة بهذا الطلب وإرجاعها للمخزون
+    const assignedIds = order.assignedPermitIds || [];
+    if (assignedIds.length > 0) {
+      const permits = this.getPermits();
+      let permitsChanged = false;
+      for (const pid of assignedIds) {
+        const permit = permits.find(p => p.id === pid);
+        if (permit && (permit.status === 'assigned' || permit.status === 'locked')) {
+          permit.status = 'available';
+          permit.assignedToCustomerId = undefined;
+          permit.assignedCustomerName = undefined;
+          permit.assignedByUserId = undefined;
+          permit.assignedByUserName = undefined;
+          permit.assignedAt = undefined;
+          permitsChanged = true;
+        }
+      }
+      if (permitsChanged) saveToStorage(STORAGE_KEYS.PERMITS, permits);
+
+      if (getIsConfigured() && getSupabase()) {
+        getSupabase()!.from('permits').update({
+          status: 'available',
+          assigned_to_customer_id: null,
+          assigned_customer_name: null,
+          assigned_by_user_id: null,
+          assigned_by_user_name: null,
+          assigned_at: null,
+        }).in('id', assignedIds).then(() => {});
+        getSupabase()!.from('order_permits').delete().eq('order_id', orderId).then(() => {});
+      }
+    }
+
+    // 2. فك ارتباط أي رسائل SMS كانت مطابقة مع هذا الطلب
+    const smsMessages = this.getSmsMessages();
+    let smsChanged = false;
+    smsMessages.forEach(m => {
+      if (m.matchedOrderId === orderId) {
+        m.status = 'unmatched';
+        m.matchedOrderId = undefined;
+        m.matchedOrderNumber = undefined;
+        m.matchedByUserId = undefined;
+        m.matchedAt = undefined;
+        smsChanged = true;
+      }
+    });
+    if (smsChanged) saveToStorage(STORAGE_KEYS.SMS, smsMessages);
+
+    // 3. حذف الطلب محلياً
+    const filteredOrders = orders.filter(o => o.id !== orderId);
+    saveToStorage(STORAGE_KEYS.ORDERS, filteredOrders);
+
+    // 4. حذف سحابي
+    if (getIsConfigured() && getSupabase()) {
+      try {
+        await getSupabase()!.from('sales_orders').delete().eq('id', orderId);
+      } catch (e) {
+        console.error('Cloud delete order error:', e);
+      }
+    }
+
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'DELETE_ORDER', 'sales_orders', orderId, {
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      totalAmount: order.totalAmount,
+      currency: order.currency,
+    });
+
+    return { success: true, message: `تم حذف الطلب #${order.orderNumber} وإرجاع أي تصاريح مرتبطة للمخزون بنجاح.` };
+  }
+
+  /** فك ارتباط تصريح وإرجاعه للمخزون مباشرة من سياق الطلب */
+  static async unassignPermitFromOrder(orderId: string, permitId: string): Promise<{ success: boolean; message: string }> {
+    const orders = this.getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return { success: false, message: 'الطلب غير موجود.' };
+
+    const returnRes = await this.returnPermit(permitId, `فك ربط من الطلب #${order.orderNumber}`);
+    if (!returnRes.success) return returnRes;
+
+    order.assignedPermitIds = (order.assignedPermitIds || []).filter(id => id !== permitId);
+    saveToStorage(STORAGE_KEYS.ORDERS, orders);
+
+    return { success: true, message: `تم إرجاع التصريح للمخزون وفك ارتباطه عن الطلب #${order.orderNumber} بنجاح.` };
   }
 
   // --- Order Archiving ---

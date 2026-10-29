@@ -21,7 +21,10 @@ import {
   Banknote,
   Bell,
   Phone,
-  RotateCcw
+  RotateCcw,
+  Edit,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { SalesOrder, Customer, UserProfile, OrderStatus, DeliveryStatus, OrderType, Permit, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';
@@ -124,6 +127,23 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+
+  // Edit Order Modal State
+  const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
+  const [editTargetDate, setEditTargetDate] = useState('');
+  const [editTargetHour, setEditTargetHour] = useState('00');
+  const [editTargetMin, setEditTargetMin] = useState('00');
+  const [editMaleCount, setEditMaleCount] = useState(1);
+  const [editFemaleCount, setEditFemaleCount] = useState(0);
+  const [editUnitPrice, setEditUnitPrice] = useState(150);
+  const [editCurrency, setEditCurrency] = useState<CurrencyCode>('SAR');
+  const [editOrderType, setEditOrderType] = useState<OrderType>('instant');
+  const [editNotes, setEditNotes] = useState('');
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  // Delete Order Confirmation Modal (Super Admin only)
+  const [deletingOrder, setDeletingOrder] = useState<SalesOrder | null>(null);
+  const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
   const refreshData = () => {
     setOrders(DataService.getOrders());
@@ -431,6 +451,80 @@ ${accountsList}`);
     DataService.recordPaymentReminder(order.id);
     refreshData();
     toast.success(order.lastReminderAt ? 'تمت إعادة إرسال تذكير السداد وتسجيله.' : 'تم إرسال تذكير السداد وتسجيله.');
+  };
+
+  // تعديل الطلب
+  const handleOpenEditOrder = (order: SalesOrder) => {
+    setEditingOrder(order);
+    setEditTargetDate(order.targetDate);
+    const [h, m] = (order.targetTime || '00:00').split(':');
+    setEditTargetHour(h || '00');
+    setEditTargetMin(m || '00');
+    setEditMaleCount(order.permitsCountMale ?? order.permitsCount);
+    setEditFemaleCount(order.permitsCountFemale ?? 0);
+    setEditUnitPrice(order.unitPrice);
+    setEditCurrency(order.currency || 'SAR');
+    setEditOrderType(order.orderType);
+    setEditNotes(order.notes || '');
+  };
+
+  const handleSaveEditOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+    setIsSubmittingEdit(true);
+    try {
+      const res = await DataService.updateOrder(editingOrder.id, {
+        targetDate: editTargetDate,
+        targetTime: `${editTargetHour}:${editTargetMin}`,
+        permitsCountMale: editMaleCount,
+        permitsCountFemale: editFemaleCount,
+        unitPrice: editUnitPrice,
+        currency: editCurrency,
+        orderType: editOrderType,
+        notes: editNotes,
+      });
+      if (res.success) {
+        toast.success(res.message);
+        setEditingOrder(null);
+        refreshData();
+      } else {
+        toast.error(res.message);
+      }
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
+  // حذف الطلب
+  const handleDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    setIsSubmittingDelete(true);
+    try {
+      const res = await DataService.deleteOrder(deletingOrder.id);
+      if (res.success) {
+        toast.success(res.message);
+        setDeletingOrder(null);
+        refreshData();
+      } else {
+        toast.error(res.message);
+      }
+    } finally {
+      setIsSubmittingDelete(false);
+    }
+  };
+
+  // فك ارتباط تصريح من نافذة المعاينة
+  const handleUnassignPermit = async (permitId: string, orderNumber?: number) => {
+    const numText = orderNumber ? `الطلب #${orderNumber}` : 'العميل';
+    if (!window.confirm(`هل أنت متأكد من فك ارتباط هذا التصريح عن ${numText} وإرجاعه للمخزون متاحاً؟`)) return;
+    const res = await DataService.returnPermit(permitId, `فك ارتباط يدوي من شاشة الطلبات`);
+    if (res.success) {
+      toast.success(res.message);
+      setPermitPreview(null);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
   };
 
   const handleCopyPermitImage = (imageUrl: string, permitCode: string) => {
@@ -1219,6 +1313,15 @@ ${accountsList}`);
                               >
                                 <Archive className="w-4 h-4" />
                               </button>
+
+                              {/* Edit Order Button */}
+                              <button
+                                onClick={() => handleOpenEditOrder(order)}
+                                className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-all shadow-sm"
+                                title="تعديل بيانات وموعد الطلب"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
                             </>
                           )}
 
@@ -1230,6 +1333,17 @@ ${accountsList}`);
                               title="استرجاع الطلب من الأرشيف"
                             >
                               <ArchiveRestore className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {/* Delete Order Button (Super Admin Only) */}
+                          {currentUser.role === 'super_admin' && (
+                            <button
+                              onClick={() => setDeletingOrder(order)}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all shadow-sm"
+                              title="حذف الطلب نهائياً"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -1831,6 +1945,15 @@ ${accountsList}`);
                 </>
               )}
               <button
+                type="button"
+                onClick={() => handleUnassignPermit(permitPreview.id)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors flex items-center gap-1.5"
+                title="إرجاع التصريح للمخزون متاحاً وفك ارتباطه عن العميل والطلب"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                إرجاع للمخزون
+              </button>
+              <button
                 onClick={() => setPermitPreview(null)}
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
               >
@@ -1911,6 +2034,201 @@ ${accountsList}`);
               >
                 <CheckCircle2 className="w-4 h-4" />
                 {paymentSubmitting ? 'جاري التسجيل...' : 'تأكيد السداد'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT ORDER MODAL */}
+      {editingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <form onSubmit={handleSaveEditOrder} className="bg-white border border-slate-200 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Edit className="w-5 h-5 text-emerald-600" />
+                <span>تعديل بيانات الطلب #{editingOrder.orderNumber}</span>
+              </h3>
+              <button type="button" onClick={() => !isSubmittingEdit && setEditingOrder(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs flex justify-between items-center">
+              <div>
+                <span className="text-slate-500">العميل: </span>
+                <span className="font-bold text-slate-900">{editingOrder.customerName}</span>
+              </div>
+              <div className="font-mono text-emerald-700 font-bold" dir="ltr">{editingOrder.customerWhatsapp}</div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">تاريخ الزيارة:</label>
+                <input
+                  type="date"
+                  required
+                  value={editTargetDate}
+                  onChange={(e) => setEditTargetDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">وقت الفترة:</label>
+                <div className="flex items-center gap-1">
+                  <select
+                    value={editTargetHour}
+                    onChange={(e) => setEditTargetHour(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs font-mono font-bold text-slate-900"
+                  >
+                    {Array.from({ length: 24 }).map((_, i) => {
+                      const val = String(i).padStart(2, '0');
+                      return <option key={val} value={val}>{val}:00</option>;
+                    })}
+                  </select>
+                  <span className="font-bold text-slate-400">:</span>
+                  <select
+                    value={editTargetMin}
+                    onChange={(e) => setEditTargetMin(e.target.value)}
+                    className="w-20 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs font-mono font-bold text-slate-900"
+                  >
+                    <option value="00">00</option>
+                    <option value="20">20</option>
+                    <option value="40">40</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">عدد تصاريح الرجال (👨):</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editMaleCount}
+                  onChange={(e) => setEditMaleCount(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">عدد تصاريح النساء (🧕):</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editFemaleCount}
+                  onChange={(e) => setEditFemaleCount(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">سعر التصريح الواحد:</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editUnitPrice}
+                  onChange={(e) => setEditUnitPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">العملة:</label>
+                <select
+                  value={editCurrency}
+                  onChange={(e) => setEditCurrency(e.target.value as CurrencyCode)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
+                >
+                  <option value="SAR">ريال سعودي (SAR)</option>
+                  <option value="EGP">جنيه مصري (EGP)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs flex justify-between items-center font-bold">
+              <span className="text-emerald-900">إجمالي الطلب الجديد:</span>
+              <span className="text-emerald-800 text-sm font-mono">
+                {((editMaleCount + editFemaleCount) * editUnitPrice).toFixed(2)} {currencySymbol(editCurrency)}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات الطلب:</label>
+              <textarea
+                rows={2}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="أية تفاصيل إضافية..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingOrder(null)}
+                disabled={isSubmittingEdit}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingEdit || (editMaleCount + editFemaleCount === 0)}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 disabled:opacity-50"
+              >
+                {isSubmittingEdit ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* DELETE ORDER MODAL */}
+      {deletingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-600 border-b border-rose-100 pb-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">تأكيد حذف الطلب نهائياً</h3>
+                <p className="text-xs text-rose-600 font-bold">هذا الإجراء مخصص للمدير العام ولا يمكن التراجع عنه.</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between"><span className="text-slate-500">رقم الطلب:</span><span className="font-mono font-bold text-slate-900">#{deletingOrder.orderNumber}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">اسم العميل:</span><span className="font-bold text-slate-900">{deletingOrder.customerName}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">المبلغ الإجمالي:</span><span className="font-mono font-bold">{deletingOrder.totalAmount} {currencySymbol(getOrderCurrency(deletingOrder))}</span></div>
+              {deletingOrder.assignedPermitIds && deletingOrder.assignedPermitIds.length > 0 && (
+                <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 font-bold text-[11px] mt-2">
+                  ⚠️ يحتوي هذا الطلب على {deletingOrder.assignedPermitIds.length} تصريح مسحوب — سيتم إرجاعها للمخزون متاحاً تلقائياً فور الحذف.
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingOrder(null)}
+                disabled={isSubmittingDelete}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteOrder}
+                disabled={isSubmittingDelete}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 disabled:opacity-50"
+              >
+                {isSubmittingDelete ? 'جاري الحذف...' : 'نعم، احذف الطلب'}
               </button>
             </div>
           </div>
