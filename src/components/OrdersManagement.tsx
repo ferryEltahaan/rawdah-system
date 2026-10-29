@@ -14,7 +14,6 @@ import {
   ArchiveRestore,
   Download,
   Eye,
-  ImageIcon,
   CheckCircle2,
   Sparkles,
   Share2,
@@ -23,8 +22,7 @@ import {
   Phone,
   RotateCcw,
   Edit,
-  Trash2,
-  AlertTriangle
+  Trash2
 } from 'lucide-react';
 import { SalesOrder, Customer, UserProfile, OrderStatus, DeliveryStatus, OrderType, Permit, CurrencyCode } from '../types';
 import { DataService } from '../services/dataService';

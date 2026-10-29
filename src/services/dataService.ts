@@ -2429,7 +2429,7 @@ export class DataService {
 
     // توثيق في سجل العمليات والتدقيق الأمني
     const currentUser = this.getCurrentUser();
-    this.addAuditLog(currentUser.id, currentUser.fullName, 'ARCHIVE_PERMITS' as any, 'permits', archivedIds[0], {
+    this.addAuditLog(currentUser.id, currentUser.fullName, 'ARCHIVE_PERMITS', 'permits', archivedIds[0], {
       archivedCount,
       usedCount,
       wastedCount,
