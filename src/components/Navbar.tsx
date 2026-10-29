@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { UserProfile, CompanySettings } from '../types';
+import { isSupabaseConfigured } from '../services/supabase';
 import { DataService } from '../services/dataService';
 import { CloudSetupModal } from './CloudSetupModal';
 import { MyProfileModal } from './MyProfileModal';
@@ -38,7 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isCloudActive, setIsCloudActive] = useState<boolean>(
-    Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || import.meta.env.VITE_SUPABASE_URL)
+    Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || import.meta.env.VITE_SUPABASE_URL || isSupabaseConfigured)
   );
   const [lastSync, setLastSync] = useState<string | null>(DataService.getLastCloudSync());
 
@@ -65,7 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     // تحديث حالة السحابة فور تغييرها
     const handleCloudUpdate = () => {
       setIsCloudActive(
-        Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || (import.meta as any).env?.VITE_SUPABASE_URL)
+        Boolean(localStorage.getItem('rawdah_cloud_supabase_url') || (import.meta as any).env?.VITE_SUPABASE_URL || isSupabaseConfigured)
       );
       const current = DataService.getCompanySettings();
       setCompanySettings(current);
