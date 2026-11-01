@@ -21,8 +21,9 @@ export function normUsername(u: string): string {
   return clean.replace(new RegExp(`@${AUTH_EMAIL_DOMAIN.replace('.', '\\.')}$`), '');
 }
 
-const DEFAULT_SUPABASE_URL = 'https://aeuavoqhrhzsxblrddlc.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_8yWMCFKNbdOnAfLjpmKBlA_kSWTdx66';
+// لا تُضمَّن بيانات الاتصال في الكود — استخدم متغيرات البيئة أو CloudSetupModal
+const DEFAULT_SUPABASE_URL = '';
+const DEFAULT_SUPABASE_ANON_KEY = '';
 
 function getSupabaseCredentials(): { url: string; key: string } {
   const url =

@@ -176,10 +176,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       let isMatch = false;
 
       if (!localProfile.password) {
-        // إذا كان الحساب بدون كلمة مرور مسجلة سابقة، نعتمد كلمة المرور المدخلة ككلمة مرور الحساب فوراً
-        localProfile.password = await hashPassword(password);
-        await DataService.saveProfile(localProfile);
-        isMatch = true;
+        // الحساب بدون كلمة مرور: رفض الدخول المحلي وإجبار المصادقة السحابية
+        setErrorMessage('هذا الحساب لم تُعيَّن له كلمة مرور بعد — يرجى التواصل مع المدير العام لإعداد الحساب عبر السحابة.');
+        setIsLoading(false);
+        return;
       } else {
         // التحقق من كلمة المرور بالتشفير فقط — المقارنة الحرفية غير مسموحة أمنياً
         const { matches } = await verifyPassword(password, localProfile.password);
