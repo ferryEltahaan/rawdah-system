@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
   User, 
@@ -58,7 +58,7 @@ export const CustomerSelfRegister: React.FC = () => {
     setErrorMessage('');
 
     if (!fullName.trim()) {
-      setErrorMessage('ظٹط±ط¬ظ‰ ط¥ط¯ط®ط§ظ„ ط§ط³ظ…ظƒ ط§ظ„ظƒط±ظٹظ….');
+      setErrorMessage('يرجى إدخال اسمك الكريم.');
       return;
     }
 
@@ -69,7 +69,7 @@ export const CustomerSelfRegister: React.FC = () => {
     }
 
     if (totalPermits < 1) {
-      setErrorMessage('ظٹط±ط¬ظ‰ طھط­ط¯ظٹط¯ طھطµط±ظٹط­ ظˆط§ط­ط¯ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„ (ط±ط¬ط§ظ„ ط£ظˆ ظ†ط³ط§ط،).');
+      setErrorMessage('يرجى تحديد تصريح واحد على الأقل (رجال أو نساء).');
       return;
     }
 
@@ -77,7 +77,7 @@ export const CustomerSelfRegister: React.FC = () => {
     if (additionalPhone.trim()) {
       const aValidation = validateWhatsappNumber(additionalPhone);
       if (!aValidation.valid) {
-        setErrorMessage('ط±ظ‚ظ… ط§ظ„ظ‡ط§طھظپ ط§ظ„ط¥ط¶ط§ظپظٹ: ' + aValidation.error);
+        setErrorMessage('رقم الهاتف الإضافي: ' + aValidation.error);
         return;
       }
       normalizedAdditional = aValidation.normalized;
@@ -86,23 +86,23 @@ export const CustomerSelfRegister: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. طھط³ط¬ظٹظ„ ط£ظˆ طھط­ط¯ظٹط« ط¨ظٹط§ظ†ط§طھ ط§ظ„ط¹ظ…ظٹظ„ ظپظٹ ط§ظ„ظ€ CRM
+      // 1. تسجيل أو تحديث بيانات العميل في الـ CRM
       const savedCustomer = await DataService.saveCustomer({
         fullName: fullName.trim(),
         whatsappNumber: wValidation.normalized,
         additionalPhone: normalizedAdditional,
         nickname: nickname.trim() || undefined,
-        notes: notes.trim() ? `[طھط³ط¬ظٹظ„ ظˆط­ط¬ط² ط°ط§طھظٹ] ${notes.trim()}` : '[طھط³ط¬ظٹظ„ ظˆط­ط¬ط² ط°ط§طھظٹ ط¹ط¨ط± ط§ظ„ط±ط§ط¨ط·]',
+        notes: notes.trim() ? `[تسجيل وحجز ذاتي] ${notes.trim()}` : '[تسجيل وحجز ذاتي عبر الرابط]',
       });
 
-      // 2. ط¥ظ†ط´ط§ط، ط·ظ„ط¨ ط¨ظٹط¹ ظپظˆط±ظٹ ظپظٹ ط´ط§ط´ط© ط§ظ„ظ…ط¨ظٹط¹ط§طھ (ط­ط§ظ„ط© searching ط¨ط§ظ†طھط¸ط§ط± ط³ط­ط¨ ط§ظ„طھطµط±ظٹط­)
+      // 2. إنشاء طلب بيع فوري في شاشة المبيعات (حالة searching بانتظار سحب التصريح)
       const unitPrice = company.defaultPermitPrice || 150;
       const totalAmount = totalPermits * unitPrice;
 
       const timeLabel = 
-        preferredTime === '19:00' ? '19:00 (ط¨ط¹ط¯ ط§ظ„ط¹ط´ط§ط،)' :
-        preferredTime === '05:00' ? '05:00 (ط§ظ„ظپط¬ط± ظˆط§ظ„طµط¨ط§ط­)' :
-        preferredTime === '14:00' ? '14:00 (ط§ظ„ط¸ظ‡ط± ظˆط§ظ„ط¹طµط±)' : '18:00 (ط£ظٹ ظ…ظˆط¹ط¯ ظ…طھط§ط­)';
+        preferredTime === '19:00' ? '19:00 (بعد العشاء)' :
+        preferredTime === '05:00' ? '05:00 (الفجر والصباح)' :
+        preferredTime === '14:00' ? '14:00 (الظهر والعصر)' : '18:00 (أي موعد متاح)';
 
       const newOrder = await DataService.createOrder({
         customerId: savedCustomer.id,
@@ -120,8 +120,8 @@ export const CustomerSelfRegister: React.FC = () => {
         totalAmount: totalAmount,
         paidAmount: 0,
         currency: 'SAR',
-        notes: notes.trim() ? `[ط·ظ„ط¨ ط°ط§طھظٹ]: ${notes.trim()}` : '[ط·ظ„ط¨ ط°ط§طھظٹ ط¹ط¨ط± ط±ط§ط¨ط· ط§ظ„ط­ط¬ط²]',
-        createdBy: 'ط¨ظˆط§ط¨ط© ط§ظ„ظ…ط¹طھظ…ط± ط§ظ„ط°ط§طھظٹط©',
+        notes: notes.trim() ? `[طلب ذاتي]: ${notes.trim()}` : '[طلب ذاتي عبر رابط الحجز]',
+        createdBy: 'بوابة المعتمر الذاتية',
       });
 
       setCreatedOrder(newOrder);
@@ -134,7 +134,7 @@ export const CustomerSelfRegister: React.FC = () => {
 
       setIsSuccess(true);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، ط­ظپط¸ ط§ظ„ط¨ظٹط§ظ†ط§طھطŒ ظٹط±ط¬ظ‰ ط§ظ„ظ…ط­ط§ظˆظ„ط© ظ…ط±ط© ط£ط®ط±ظ‰.');
+      setErrorMessage(err?.message || 'حدث خطأ أثناء حفظ البيانات، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsSubmitting(false);
     }
@@ -156,8 +156,8 @@ export const CustomerSelfRegister: React.FC = () => {
   const companyWhatsappUrl = company.whatsappNumber 
     ? `https://wa.me/${cleanPhone(company.whatsappNumber).replace('+', '')}?text=${encodeURIComponent(
         createdOrder 
-          ? `ط§ظ„ط³ظ„ط§ظ… ط¹ظ„ظٹظƒظ…طŒ ظ‚ظ…طھ ط¨طھط³ط¬ظٹظ„ ط·ظ„ط¨ ط­ط¬ط² طھطµط±ظٹط­ ط±ظˆط¶ط© ط±ظ‚ظ… #${createdOrder.orderNumber} ط¨ط§ط³ظ…: ${fullName} ظ„طھط§ط±ظٹط® ${targetDate} (ط§ظ„ط¹ط¯ط¯: ${totalPermits}). ظٹط±ط¬ظ‰ طھط£ظƒظٹط¯ ط§ظ„ط­ط¬ط².`
-          : `ط§ظ„ط³ظ„ط§ظ… ط¹ظ„ظٹظƒظ…طŒ ظ‚ظ…طھ ط¨طھط³ط¬ظٹظ„ ط¨ظٹط§ظ†ط§طھظٹ ط¨ط§ط³ظ…: ${fullName || 'ظ…ط¹طھظ…ط± ط¬ط¯ظٹط¯'} ظ„طھظ†ط³ظٹظ‚ طھطµط§ط±ظٹط­ ط§ظ„ط±ظˆط¶ط© ط§ظ„ط´ط±ظٹظپط©.`
+          ? `السلام عليكم، قمت بتسجيل طلب حجز تصريح روضة رقم #${createdOrder.orderNumber} باسم: ${fullName} لتاريخ ${targetDate} (العدد: ${totalPermits}). يرجى تأكيد الحجز.`
+          : `السلام عليكم، قمت بتسجيل بياناتي باسم: ${fullName || 'معتمر جديد'} لتنسيق تصاريح الروضة الشريفة.`
       )}`
     : null;
 
