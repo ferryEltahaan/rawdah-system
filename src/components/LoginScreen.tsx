@@ -172,6 +172,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         id: 'fe292e3d-9509-43d6-9561-aba950cb8540',
         fullName: 'المدير العام',
         username: 'admin',
+        phoneNumber: '+966500000001',
+        whatsappNumber: '+966500000001',
         role: 'super_admin',
         isActive: true,
         password: await hashPassword(password),

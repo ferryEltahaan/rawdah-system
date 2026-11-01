@@ -2956,9 +2956,7 @@ export class DataService {
       // زيادة رصيد خزينة الكاش المناسبة وتوثيقها سحابياً
       const accounts = this.getFinancialAccounts();
       const payCur = orderData.currency || 'SAR';
-      const cashAccount =
-        accounts.find(a => a.isActive && a.type === 'wallet' && accountCurrency(a) === payCur) ||
-        accounts.find(a => a.isActive && a.type === 'wallet');
+      const cashAccount = accounts.find(a => a.isActive && a.type === 'wallet' && accountCurrency(a) === payCur);
       if (cashAccount) {
         cashAccount.currentBalance = Math.round((cashAccount.currentBalance + orderData.paidAmount) * 100) / 100;
         saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
@@ -4217,9 +4215,7 @@ export class DataService {
     // ✅ السداد اليدوي (نقدي/تحويل مباشر) يجب أن يزيد رصيد الخزنة أيضاً عبر rpc_adjust_balance
     const accounts = this.getFinancialAccounts();
     const payCurrency = getOrderCurrency(order);
-    const cashAccount =
-      accounts.find(a => a.isActive && a.type === 'wallet' && accountCurrency(a) === payCurrency) ||
-      accounts.find(a => a.isActive && a.type === 'wallet');
+    const cashAccount = accounts.find(a => a.isActive && a.type === 'wallet' && accountCurrency(a) === payCurrency);
     if (cashAccount) {
       cashAccount.currentBalance = Math.round((cashAccount.currentBalance + amountNum) * 100) / 100;
       saveToStorage(STORAGE_KEYS.ACCOUNTS, accounts);
