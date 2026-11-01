@@ -1512,7 +1512,7 @@ ${accountsList}`);
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-                      {canDelete && (
+                      {currentUser.role === 'super_admin' && (
                         <button
                           onClick={() => setDeletingOrder(order)}
                           className="p-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50"
