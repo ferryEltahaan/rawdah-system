@@ -1,5 +1,5 @@
 import React, { Suspense, useState, useEffect, useMemo } from 'react';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { Loader2, ShieldAlert, LayoutDashboard, Ticket, ShoppingBag, MessageSquareCode, Menu } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { Sidebar, NavTab, NAV_TAB_LABELS, getVisibleNavTabs } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
@@ -246,7 +246,7 @@ const AppContent: React.FC = () => {
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
-        <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 overflow-y-auto max-h-[calc(100vh-60px)] md:max-h-[calc(100vh-65px)]">
+        <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 overflow-y-auto max-h-[calc(100vh-60px)] md:max-h-[calc(100vh-65px)] pb-24 md:pb-8">
           <div className="max-w-7xl mx-auto">
             {effectiveTab === null ? (
               <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
@@ -320,65 +320,73 @@ const AppContent: React.FC = () => {
 
       </div>
 
-      {/* Mobile Bottom Navigation Bar (1-touch mobile accessibility) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-lg">
+            {/* Mobile Bottom Navigation Bar (1-touch mobile accessibility) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200/90 px-3 py-2 flex items-center justify-around shadow-[0_-4px_25px_rgba(0,0,0,0.08)]" dir="rtl">
         {allowedTabs.includes('dashboard') && (
           <button
             onClick={() => handleNavigate('dashboard')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-colors ${
-              effectiveTab === 'dashboard' ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-800'
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${
+              effectiveTab === 'dashboard'
+                ? 'text-[#064E3B] font-black bg-emerald-50 scale-105 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span className="text-base">📊</span>
-            <span className="text-[10px]">الرئيسية</span>
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="text-[10px] font-bold">الرئيسية</span>
           </button>
         )}
 
         {allowedTabs.includes('permits') && (
           <button
             onClick={() => handleNavigate('permits')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-colors ${
-              effectiveTab === 'permits' ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-800'
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${
+              effectiveTab === 'permits'
+                ? 'text-[#064E3B] font-black bg-emerald-50 scale-105 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span className="text-base">🎟️</span>
-            <span className="text-[10px]">الفترات</span>
+            <Ticket className="w-5 h-5" />
+            <span className="text-[10px] font-bold">التصاريح</span>
           </button>
         )}
 
         {allowedTabs.includes('orders') && (
           <button
             onClick={() => handleNavigate('orders')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-colors ${
-              effectiveTab === 'orders' ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-800'
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${
+              effectiveTab === 'orders'
+                ? 'text-[#064E3B] font-black bg-emerald-50 scale-105 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span className="text-base">🛍️</span>
-            <span className="text-[10px]">الطلبات</span>
+            <ShoppingBag className="w-5 h-5" />
+            <span className="text-[10px] font-bold">الطلبات</span>
           </button>
         )}
 
         {allowedTabs.includes('sms') && (
           <button
             onClick={() => handleNavigate('sms')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-colors relative ${
-              effectiveTab === 'sms' ? 'text-emerald-700 font-bold' : 'text-slate-500 hover:text-slate-800'
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all relative ${
+              effectiveTab === 'sms'
+                ? 'text-[#064E3B] font-black bg-emerald-50 scale-105 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span className="text-base">💬</span>
-            <span className="text-[10px]">الرسائل</span>
+            <MessageSquareCode className="w-5 h-5" />
+            <span className="text-[10px] font-bold">البنك SMS</span>
             {unmatchedSmsCount > 0 && (
-              <span className="absolute top-0 right-2 w-2 h-2 rounded-full bg-amber-500"></span>
+              <span className="absolute top-1 right-2 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white animate-pulse"></span>
             )}
           </button>
         )}
 
         <button
           onClick={() => setIsMobileMenuOpen(true)}
-          className="flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl text-slate-500 hover:text-slate-800 transition-colors"
+          className="flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl text-slate-500 hover:text-slate-800 transition-all"
         >
-          <span className="text-base">☰</span>
-          <span className="text-[10px]">المزيد</span>
+          <Menu className="w-5 h-5 text-slate-700" />
+          <span className="text-[10px] font-bold">القائمة</span>
         </button>
       </nav>
 

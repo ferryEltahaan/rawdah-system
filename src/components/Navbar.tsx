@@ -153,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <h1 className="text-sm md:text-base font-black text-white tracking-tight leading-tight flex items-center gap-2">
-                <span>{companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}</span>
+                <span className="truncate max-w-[160px] xs:max-w-[220px] sm:max-w-none">{companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}</span>
               </h1>
               <p className="text-[10px] md:text-xs text-emerald-200/90 font-medium flex items-center gap-1.5">
                 <span className="hidden xs:inline">نظام التشغيل وإدارة التصاريح</span>

@@ -668,7 +668,7 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
       </div>
 
       {/* 3 Time Slots Selector (00, 20, 40) */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
         {minutes.map(min => {
           const isSelected = selectedMinute === min;
           const stats = getSlotStats(selectedHour, min);
@@ -678,14 +678,14 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
             <button
               key={min}
               onClick={() => setSelectedMinute(min)}
-              className={`p-4 rounded-3xl text-right transition-all border ${
+              className={`p-2 sm:p-4 rounded-2xl sm:rounded-3xl text-right transition-all border ${
                 isSelected
                   ? 'bg-emerald-50 border-2 border-emerald-600 shadow-sm text-emerald-950'
                   : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-sm'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-mono font-black text-lg text-emerald-800">{slotLabel}</span>
+                <span className="font-mono font-black text-sm sm:text-lg text-emerald-800">{slotLabel}</span>
                 <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
                   stats.available > 0
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -1245,7 +1245,7 @@ export const PermitsInventory: React.FC<PermitsInventoryProps> = ({ currentUser 
       {/* BULK UPLOAD MODAL */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <form onSubmit={handleBulkUpload} className="bg-white border border-slate-200 rounded-3xl p-6 max-w-xl w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+          <form onSubmit={handleBulkUpload} className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 max-w-xl w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-emerald-700">
                 <FolderOpen className="w-5 h-5" />
