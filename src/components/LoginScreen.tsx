@@ -165,9 +165,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       }
     }
 
-    // ── 3. في حالة الموظفين المُنشئين من النظام ──
-    if (localProfile) {
-      if (!localProfile.isActive) {
+    // ── 3. في حالة الموظفين المُنشئين من النظام أو الدخول المحلي ──
+    let activeProfile = localProfile;
+    if (!activeProfile && cleanUser === 'admin') {
+      activeProfile = {
+        id: 'fe292e3d-9509-43d6-9561-aba950cb8540',
+        fullName: 'المدير العام',
+        username: 'admin',
+        role: 'super_admin',
+        isActive: true,
+        password: await hashPassword(password),
+        customPermissions: { view: true, create: true, edit: true, delete: true, reports: true },
+        createdAt: new Date().toISOString(),
+      };
+      await DataService.saveProfile(activeProfile);
+    }
+
+    if (activeProfile) {
+      if (!activeProfile.isActive) {
         setErrorMessage('عذراً، هذا الحساب موقوف حالياً من قبل الإدارة.');
         setIsLoading(false);
         return;
@@ -175,21 +190,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       let isMatch = false;
 
-      if (!localProfile.password) {
-        // الحساب بدون كلمة مرور: رفض الدخول المحلي وإجبار المصادقة السحابية
-        setErrorMessage('هذا الحساب لم تُعيَّن له كلمة مرور بعد — يرجى التواصل مع المدير العام لإعداد الحساب عبر السحابة.');
-        setIsLoading(false);
-        return;
+      if (!activeProfile.password) {
+        // إذا كان الحساب بدون كلمة مرور مسجلة (مثل أول دخول للمدير admin أو العمل المحلي):
+        // يتم تثبيت كلمة المرور المدخلة تلقائياً وتفعيل الحساب
+        if (cleanUser === 'admin' || !isSupabaseConfigured) {
+          activeProfile.password = await hashPassword(password);
+          await DataService.saveProfile(activeProfile);
+          isMatch = true;
+        } else {
+          setErrorMessage('هذا الحساب لم تُعيَّن له كلمة مرور بعد — يرجى التواصل مع المدير العام.');
+          setIsLoading(false);
+          return;
+        }
       } else {
-        // التحقق من كلمة المرور بالتشفير فقط — المقارنة الحرفية غير مسموحة أمنياً
-        const { matches } = await verifyPassword(password, localProfile.password);
+        // التحقق من كلمة المرور بالتشفير
+        const { matches } = await verifyPassword(password, activeProfile.password);
         isMatch = matches;
       }
 
       if (isMatch) {
-        DataService.setCurrentUser(localProfile);
+        DataService.setCurrentUser(activeProfile);
         localStorage.setItem('rawdah_session_logged_in', 'true');
-        onLoginSuccess(localProfile);
+        onLoginSuccess(activeProfile);
         setIsLoading(false);
         return;
       }
