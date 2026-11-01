@@ -1001,9 +1001,10 @@ ${accountsList}`);
         </div>
       )}
 
-      {/* Orders Table */}
+      {/* Orders Table & Mobile Cards */}
       <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        {/* Desktop Table View */}
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
               <tr>
@@ -1353,6 +1354,179 @@ ${accountsList}`);
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards View (md:hidden) */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {smartOrders.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 font-medium text-xs">
+              {viewMode === 'archived' ? 'لا توجد طلبات مؤرشفة مطابقة.' : 'لا توجد طلبات مطابقة للبحث.'}
+            </div>
+          ) : (
+            smartOrders.map((order) => {
+              const isFullyPaid = order.paidAmount >= order.totalAmount && order.totalAmount > 0;
+              const orderSym = currencySymbol(getOrderCurrency(order));
+
+              const directPermitIds = order.assignedPermitIds || [];
+              let claimedPermits = directPermitIds
+                .map(id => permitById[id])
+                .filter(Boolean) as Permit[];
+
+              if (claimedPermits.length < order.permitsCount) {
+                const customerPermits = permits.filter(p => 
+                  p.status === 'assigned' && 
+                  p.assignedToCustomerId === order.customerId && 
+                  !claimedPermits.some(cp => cp.id === p.id)
+                );
+                claimedPermits = [...claimedPermits, ...customerPermits].slice(0, order.permitsCount);
+              }
+
+              const effectiveOrderStatus: OrderStatus = 
+                claimedPermits.length > 0 && order.orderStatus !== 'cancelled'
+                  ? 'confirmed'
+                  : order.orderStatus;
+
+              return (
+                <div key={`m-${order.id}`} className={`p-4 space-y-3 transition-colors ${order.isArchived ? 'bg-slate-50/60' : 'bg-white'}`}>
+                  {/* Top Bar: Order number + Status + WhatsApp button */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-sm text-emerald-800">#{order.orderNumber}</span>
+                      <select
+                        value={effectiveOrderStatus}
+                        onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
+                        className={`border rounded-xl px-2 py-0.5 text-[11px] font-bold focus:outline-none ${
+                          effectiveOrderStatus === 'confirmed'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : effectiveOrderStatus === 'searching'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300'
+                            : 'bg-slate-50 text-slate-800 border-slate-200'
+                        }`}
+                      >
+                        <option value="confirmed">مؤكد ✓</option>
+                        <option value="searching">جاري البحث</option>
+                        <option value="unconfirmed">غير مؤكد</option>
+                        <option value="cancelled">ملغي</option>
+                      </select>
+                    </div>
+
+                    {!order.isArchived && (
+                      <button
+                        onClick={() => handleOpenWhatsAppModal(order)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>إرسال واتساب</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Customer Card */}
+                  <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-2xl border border-slate-100 text-xs">
+                    <div>
+                      <div className="font-bold text-slate-900">{order.customerName}</div>
+                      <div className="text-[11px] font-mono text-slate-500 mt-0.5">{order.customerWhatsapp}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={`https://wa.me/${order.customerWhatsapp.replace(/[^0-9]/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2 rounded-xl bg-white border border-slate-200 text-emerald-700 shadow-xs"
+                        title="محادثة واتساب"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </a>
+                      <a
+                        href={`tel:${order.customerWhatsapp}`}
+                        className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-xs"
+                        title="اتصال هاتفي"
+                      >
+                        <Phone className="w-4 h-4 text-emerald-700" />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Details Grid: Date & Time + Permits */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 rounded-2xl bg-slate-50/80 border border-slate-100">
+                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">موعد الزيارة:</span>
+                      <div className="font-bold text-slate-800 text-[11px]">{order.targetDate}</div>
+                      <div className="text-[10px] text-amber-700 font-mono font-bold">الساعة {order.targetTime}</div>
+                    </div>
+
+                    <div className="p-2.5 rounded-2xl bg-slate-50/80 border border-slate-100">
+                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">عدد التصاريح:</span>
+                      <div className="font-bold text-slate-800 text-[11px]">{order.permitsCount} تصريح</div>
+                      <div className={`text-[10px] font-bold ${claimedPermits.length >= order.permitsCount ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {claimedPermits.length} من {order.permitsCount} مسحوبة ✓
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financial Summary */}
+                  <div className="flex items-center justify-between p-2.5 rounded-2xl bg-emerald-50/50 border border-emerald-100 text-xs">
+                    <div>
+                      <span className="text-slate-500 text-[11px]">الإجمالي: </span>
+                      <span className="font-bold text-slate-900 font-mono">{order.totalAmount} {orderSym}</span>
+                    </div>
+                    <div>
+                      {isFullyPaid ? (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                          مسدد بالكامل ✓
+                        </span>
+                      ) : (
+                        <span className="text-rose-700 font-bold font-mono text-[11px]">متبقي: {order.remainingAmount} {orderSym}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="flex items-center justify-between pt-1 gap-2 border-t border-slate-100">
+                    <div className="flex items-center gap-1.5">
+                      {!order.isArchived && !isFullyPaid && (
+                        <button
+                          onClick={() => handleOpenPayment(order)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs flex items-center gap-1"
+                        >
+                          <Banknote className="w-3.5 h-3.5" />
+                          <span>سداد</span>
+                        </button>
+                      )}
+                      {!order.isArchived && (
+                        <button
+                          onClick={onNavigateToPermits}
+                          className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold flex items-center gap-1"
+                        >
+                          <Ticket className="w-3.5 h-3.5" />
+                          <span>تسكين</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditModal(order)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                        title="تعديل بيانات الطلب"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => handleOpenDeleteModal(order)}
+                          className="p-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                          title="حذف الطلب"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

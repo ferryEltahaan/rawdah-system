@@ -154,14 +154,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate })
     <div className="space-y-6">
 
       {/* Welcome Banner */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-900 border border-emerald-700/40 rounded-3xl p-6 md:p-8 shadow-lg text-white">
+      <div className="relative overflow-hidden bg-gradient-to-r from-[#064E3B] via-[#04634b] to-[#02231b] border border-amber-400/30 rounded-3xl p-5 sm:p-6 md:p-8 shadow-lg text-white">
         <div className="relative z-10 space-y-2 max-w-2xl">
           <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md text-emerald-100 border border-white/20 text-xs px-3.5 py-1 rounded-full font-bold">
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
             <span>نظام التشغيل وإدارة تصاريح الروضة الشريفة</span>
           </div>
           
-          <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-white">
             أهلاً بك، <span className="text-amber-300">{currentUser.fullName}</span> 👋
           </h2>
           
@@ -175,7 +175,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate })
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
         {/* Available Permits */}
         <div 
