@@ -225,68 +225,103 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden font-cairo" dir="rtl">
+    <div className="min-h-screen bg-slate-900 flex flex-col md:flex-row relative overflow-hidden font-cairo" dir="rtl">
       
-      {/* Subtle Ambient Background Gradients */}
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-      <div className="w-full max-w-md relative z-10 space-y-6">
+      {/* ── الجانب الأيمن (Desktop): واجهة الشعار والهوية الفاخرة لمناسك الخير ── */}
+      <div className="w-full md:w-1/2 bg-gradient-to-br from-[#064E3B] via-[#043d2f] to-[#02231b] p-8 md:p-16 flex flex-col justify-between relative overflow-hidden text-white border-b-4 md:border-b-0 md:border-l-4 border-amber-500/70 shadow-2xl">
         
-        {/* Brand Header */}
-        <div className="text-center space-y-3">
-          <div className="inline-flex p-1 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-amber-500 shadow-md shadow-emerald-600/20">
-            <div className="bg-white p-3.5 rounded-[14px] shadow-inner flex items-center justify-center min-w-[56px] min-h-[56px]">
+        {/* خلفيات جمالية زخرفية */}
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-amber-400/5 via-transparent to-transparent pointer-events-none"></div>
+
+        {/* الترويسة العلوية لجانب الهوية */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-900/80 border border-amber-400/40 text-amber-300 text-xs font-bold tracking-wider shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+            <span>بوابة التشغيل الميداني المعتمدة</span>
+          </div>
+          <span className="text-[11px] text-emerald-200/80 font-mono">Asia/Riyadh +03:00</span>
+        </div>
+
+        {/* قلب الهوية: الشعار والعنوان الفخم */}
+        <div className="relative z-10 my-auto py-12 md:py-0 text-center md:text-right space-y-6">
+          <div className="inline-flex p-2.5 rounded-3xl bg-gradient-to-tr from-amber-400 via-amber-500 to-emerald-400 p-1 shadow-2xl shadow-emerald-950/60 mx-auto md:mx-0">
+            <div className="bg-[#064E3B] p-4 rounded-[22px] flex items-center justify-center min-w-[76px] min-h-[76px] border border-amber-400/30">
               {companySettings.logoUrl ? (
-                <img src={companySettings.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
+                <img src={companySettings.logoUrl} alt="Logo" className="w-14 h-14 object-contain rounded-xl" />
               ) : (
-                <Building2 className="w-8 h-8 text-emerald-600" />
+                <Building2 className="w-12 h-12 text-amber-300" />
               )}
             </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-              {companySettings.companyNameAr || 'منظومة تصاريح الروضة الشريفة'}
+
+          <div className="space-y-3">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
+              {companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}
             </h1>
-            <p className="text-xs text-slate-600 font-medium mt-1">
-              {companySettings.companyNameEn || 'منصة إدارة الفترات الزمنية والمبيعات والسداد الفوري'}
+            <p className="text-sm md:text-base text-amber-200/90 font-semibold tracking-wide">
+              {companySettings.companyNameEn || 'Rawdah Permits Enterprise Management System'}
             </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-4 max-w-md mx-auto md:mx-0 text-right">
+            <div className="p-3.5 rounded-2xl bg-emerald-900/60 border border-emerald-700/50 backdrop-blur-sm">
+              <span className="block text-amber-300 text-xs font-bold mb-1">⏰ فترات الـ 20 دقيقة</span>
+              <span className="text-[11px] text-emerald-100/80 leading-relaxed">إدارة دقيقة لـ 72 فترة يومية متوافقة مع بوابات الحرم.</span>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-emerald-900/60 border border-emerald-700/50 backdrop-blur-sm">
+              <span className="block text-amber-300 text-xs font-bold mb-1">⚡ سداد وتسليم فوري</span>
+              <span className="text-[11px] text-emerald-100/80 leading-relaxed">مطابقة بنكية ذكية وإصدار تذاكر الدخول بالعملتين (SAR/EGP).</span>
+            </div>
           </div>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 md:p-8 shadow-xl backdrop-blur-xl space-y-5">
-          <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Lock className="w-4 h-4 text-emerald-600" />
+        {/* التذييل لجانب الهوية */}
+        <div className="relative z-10 pt-4 text-xs text-emerald-200/70 border-t border-emerald-800/60 flex items-center justify-between">
+          <span>الروضة الشريفة • المسجد النبوي</span>
+          <span>الإصدار الميداني المعتمد v2.6</span>
+        </div>
+
+      </div>
+
+      {/* ── الجانب الأيسر: نموذج تسجيل الدخول للنظام ── */}
+      <div className="w-full md:w-1/2 bg-slate-50 flex items-center justify-center p-6 md:p-12 lg:p-16 relative z-10">
+        
+        <div className="w-full max-w-md space-y-6">
+
+          {/* ترويسة بطاقة الدخول */}
+          <div className="space-y-1">
+            <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+              <Lock className="w-5 h-5 text-[#064E3B]" />
               <span>تسجيل الدخول للنظام</span>
             </h2>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              أدخل بيانات حسابك المعتمدة للوصول لشاشتك المخصصة
+            <p className="text-xs text-slate-600 font-semibold">
+              أدخل بيانات حسابك المعتمدة للوصول للوحة التحكم وشاشتك المخصصة
             </p>
           </div>
 
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold animate-in fade-in flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold animate-in fade-in flex items-center gap-2 shadow-sm">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0"></span>
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* دخول آمن */}
-          <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70 text-[11px] text-slate-600 space-y-1.5">
-            <div className="font-bold text-emerald-900 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>دخول آمن:</span>
+          {/* تنبيه الدخول الآمن */}
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-[11px] text-slate-700 space-y-1 shadow-sm">
+            <div className="font-bold text-[#064E3B] flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>دخول آمن وموثق:</span>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              يتم التحقق من اسم المستخدم وكلمة المرور على خادم Supabase، ولا تُخزَّن كلمات المرور في هذا التطبيق.
+            <p className="leading-relaxed">
+              المصادقة محمية ومشفرة عبر خادم Supabase السحابي ولا تُحفظ كلمات المرور محلياً.
             </p>
           </div>
 
           <form onSubmit={(e) => { void handleLogin(e); }} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label className="block text-xs font-bold text-slate-800 mb-1.5">
                 اسم المستخدم / البريد الإلكتروني:
               </label>
               <div className="relative">
@@ -297,13 +332,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   placeholder="مثال: admin أو khaled_sales"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-xs text-slate-900 font-semibold placeholder-slate-400 focus:outline-none focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                  className="w-full bg-white border border-slate-300 rounded-xl pr-10 pl-4 py-3 text-xs text-slate-900 font-bold placeholder-slate-400 focus:outline-none focus:border-[#064E3B] focus:ring-2 focus:ring-emerald-700/10 transition-all shadow-sm"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label className="block text-xs font-bold text-slate-800 mb-1.5">
                 كلمة المرور:
               </label>
               <div className="relative">
@@ -314,12 +349,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-10 py-2.5 text-xs text-slate-900 font-semibold placeholder-slate-400 focus:outline-none focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                  className="w-full bg-white border border-slate-300 rounded-xl pr-10 pl-10 py-3 text-xs text-slate-900 font-bold placeholder-slate-400 focus:outline-none focus:border-[#064E3B] focus:ring-2 focus:ring-emerald-700/10 transition-all shadow-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-3 text-slate-400 hover:text-slate-600"
+                  className="absolute left-3.5 top-3.5 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -329,37 +364,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-md shadow-emerald-700/20 hover:shadow-lg flex items-center justify-center gap-2 transition-all"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#064E3B] to-[#047857] hover:from-[#043d2f] hover:to-[#065f46] text-white font-bold text-sm shadow-lg shadow-emerald-950/20 hover:shadow-xl flex items-center justify-center gap-2 transition-all border border-amber-400/40"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 <>
                   <span>دخول للنظام</span>
-                  <ArrowLeft className="w-4 h-4" />
+                  <ArrowLeft className="w-4 h-4 text-amber-300" />
                 </>
               )}
             </button>
 
-            {/* Public Registration Link */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-              <span className="text-slate-500 font-medium">عميل جديد وترغب بالتسجيل؟</span>
+            {/* رابط تسجيل العملاء الذاتي */}
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-600 font-medium">عميل جديد وترغب بالتسجيل؟</span>
               <a
                 href="?register=true"
-                className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 transition-colors"
+                className="font-bold text-[#064E3B] hover:text-[#047857] hover:underline flex items-center gap-1 transition-colors"
                 id="public-registration-link"
               >
-                <span>تسجيل عميل جديد / إنشاء حساب</span>
+                <span>تسجيل عميل جديد / طلب فوري</span>
                 <ArrowLeft className="w-3.5 h-3.5" />
               </a>
             </div>
 
-            {/* Cloud connection link for admin initial setup */}
+            {/* أدوات الربط السحابي ومسح الذاكرة */}
             <div className="pt-2 flex flex-col items-center justify-center gap-1">
               <button
                 type="button"
                 onClick={() => setShowCloudModal(true)}
-                className="text-[11px] text-slate-400 hover:text-emerald-700 flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg hover:bg-slate-50"
+                className="text-[11px] text-slate-500 hover:text-[#064E3B] flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg hover:bg-slate-100"
               >
                 <CloudCog className="w-3.5 h-3.5" />
                 <span>إعداد الاتصال بالسحابة (Supabase Cloud Setup)</span>
@@ -371,7 +406,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   alert(`تم تفريغ مساحة المتصفح بنجاح (تم توفير ${res.freedKb} ك.ب).`);
                   window.location.reload();
                 }}
-                className="text-[11px] text-slate-400 hover:text-amber-700 flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg hover:bg-slate-50"
+                className="text-[11px] text-slate-500 hover:text-amber-700 flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg hover:bg-slate-100"
                 title="اضغط هنا لتفريغ الذاكرة المؤقتة إذا ظهرت لك رسالة امتلاء مساحة الهاتف"
               >
                 <span>🧹 تفريغ مساحة المتصفح وحل امتلاء التخزين</span>
@@ -379,11 +414,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
           </form>
 
-        </div>
+          {/* تنبيه سفلي */}
+          <div className="text-center text-[10px] text-slate-400 font-medium pt-2">
+            جميع الحقوق محفوظة لمؤسسة مناسك الخير • نظام مشفر بالكامل
+          </div>
 
-        {/* Footer info */}
-        <div className="text-center text-[11px] text-slate-500 font-medium">
-          النظام متوافق مع نظام التوقيت الرسمي (Asia/Riyadh) • تشفير وقواعد بيانات سحابية Supabase
         </div>
 
       </div>
