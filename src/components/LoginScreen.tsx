@@ -227,54 +227,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col md:flex-row relative overflow-hidden font-cairo" dir="rtl">
       
-      {/* ── الجانب الأيمن (Desktop): واجهة الشعار والهوية الفاخرة المطابقة 1:1 للصورة ── */}
-      <div className="w-full md:w-1/2 min-h-[420px] md:min-h-screen relative flex flex-col justify-center items-center text-center p-8 md:p-12 overflow-hidden shadow-2xl bg-[#063f30]">
+      {/* ── الجانب الأيمن (Desktop): واجهة الشعار والهوية كصورة خلفية نقية تماماً دون تكرار نصوص ── */}
+      <div className="w-full md:w-1/2 min-h-[420px] md:min-h-screen relative flex items-center justify-center p-0 overflow-hidden shadow-2xl bg-[#063f30]">
         
-        {/* خلفية الزخارف المعمارية والنقوش الإسلامية المباشرة */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-95 transition-opacity"
-          style={{ backgroundImage: `url('/login-brand-panel.jpg')` }}
+        {/* الصورة نفسها تحتوي على الشعار والنصوص بنقاء فائق، تُعرض كاملة دون عناصر فوقها */}
+        <img 
+          src="/login-brand-panel.jpg" 
+          alt="مناسك الخير لتصاريح الروضة الشريفة" 
+          className="w-full h-full object-cover object-center"
         />
-        
-        {/* تدرج تظليل لحماية التباين وإبراز الشعار */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#02231b]/80 via-transparent to-[#043327]/60 pointer-events-none" />
 
-        {/* محتوى الهوية والشعار المباشر */}
-        <div className="relative z-10 max-w-md mx-auto space-y-6 flex flex-col items-center">
-          
-          {/* الشعار المركزي المفرز (المحراب الذهبي والقبة الخضراء) */}
-          <div className="relative group cursor-pointer transition-transform hover:scale-105 duration-300">
-            <div className="w-32 h-36 md:w-40 md:h-44 rounded-3xl p-1 bg-gradient-to-b from-amber-300 via-amber-500 to-amber-700 shadow-[0_0_35px_rgba(245,158,11,0.35)] flex items-center justify-center">
-              <div className="w-full h-full bg-[#05382b] rounded-[22px] flex items-center justify-center overflow-hidden border border-amber-300/40 p-2">
-                <img 
-                  src="/rawdah-logo-emblem.png" 
-                  alt="شعار مناسك الخير - الروضة الشريفة" 
-                  className="w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]" 
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* الخط العربي المذهب الفاخر لمناسك الخير */}
-          <div className="space-y-2 text-center">
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-tight bg-gradient-to-b from-[#FFFDF0] via-[#FDE68A] to-[#D97706] bg-clip-text text-transparent drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
-              مناسك الخير
-            </h1>
-            <h2 className="text-xl md:text-2xl font-bold tracking-wide bg-gradient-to-b from-[#FDE68A] to-[#B45309] bg-clip-text text-transparent drop-shadow-md">
-              لتصاريح الروضة الشريفة
-            </h2>
-            <p className="text-xs md:text-sm text-emerald-100/90 font-medium tracking-wider pt-2">
-              بوابة الدخول الذكية والتشغيل الميداني المعتمد
-            </p>
-          </div>
-
-        </div>
-
-        {/* شريط معلومات سفلي دقيق */}
-        <div className="absolute bottom-4 inset-x-8 z-10 flex items-center justify-between text-[11px] text-amber-200/70 border-t border-emerald-700/40 pt-2">
-          <span>الروضة الشريفة • المسجد النبوي</span>
-          <span>Asia/Riyadh +03:00</span>
-        </div>
+        {/* طبقة تظليل خفيفة جداً فقط لإبراز حافة التقسيم */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10 pointer-events-none" />
 
       </div>
 
