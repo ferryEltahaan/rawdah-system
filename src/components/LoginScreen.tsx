@@ -415,6 +415,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
           </div>
 
+          {/* بطاقات ميزات النظام لإثراء الشاشة وملء الفراغ بفخامة مؤسسية */}
+          <div className="grid grid-cols-2 gap-3.5 pt-6 w-full max-w-md mx-auto">
+            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-700/40 backdrop-blur-md text-right space-y-1 hover:border-amber-400/40 transition-colors">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span>فترات الـ 20 دقيقة</span>
+              </div>
+              <p className="text-[11px] text-emerald-100/75 leading-relaxed">
+                إدارة دقيقة لـ 72 فترة يومية متوافقة مع بوابات الحرم الشريف.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-700/40 backdrop-blur-md text-right space-y-1 hover:border-amber-400/40 transition-colors">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span>سداد وتسليم فوري</span>
+              </div>
+              <p className="text-[11px] text-emerald-100/75 leading-relaxed">
+                مطابقة بنكية ذكية وإصدار تذاكر الدخول بالعملتين (SAR/EGP).
+              </p>
+            </div>
+          </div>
+
         </div>
 
       </div>
