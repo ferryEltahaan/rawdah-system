@@ -14,7 +14,9 @@ import {
   ExternalLink,
   Tag,
   Calendar,
-  Users
+  Users,
+  UserPlus,
+  ArrowRight
 } from 'lucide-react';
 import { CompanySettings, SalesOrder } from '../types';
 import { DataService } from '../services/dataService';
