@@ -135,6 +135,8 @@ export const SmsInbox: React.FC<SmsInboxProps> = ({ currentUser, onNavigateToOrd
     }
     if (o.reason === 'customer_not_found') {
       toast.warning('مرسل غير معروف — لم يُتعرف على العميل من الرسالة، وهي الآن بانتظار المطابقة اليدوية.');
+    } else if (o.reason === 'name_only_requires_manual_confirmation') {
+      toast.info(`تم رصد اسم مشابه (${o.customerName}) — بانتظار تأكيدك اليدوي كإجراء أمان مالي.`);
     } else {
       toast.warning(`تم التعرف على العميل ${o.customerName} لكن لا يوجد طلب مفتوح بنفس عملة الرسالة — بانتظار المطابقة اليدوية.`);
     }

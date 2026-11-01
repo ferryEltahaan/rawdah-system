@@ -36,7 +36,7 @@ const getIsConfigured = () => SupabaseModule.isSupabaseConfigured;
 export interface AutoMatchOutcome {
   smsId: string;
   matched: boolean;
-  reason: 'ok' | 'customer_not_found' | 'order_not_found';
+  reason: 'ok' | 'customer_not_found' | 'order_not_found' | 'name_only_requires_manual_confirmation';
   customerName?: string;
   orderNumber?: number;
   amount?: number;
@@ -3493,8 +3493,8 @@ export class DataService {
 
   // --- محرك المطابقة التلقائية ---
 
-  // التعرف على العميل من الرسالة: رقم هاتف (في المرسل أو المتن) ثم الاسم الكامل/النيك نيم
-  static identifyCustomerFromSms(sms: SmsMessage, customers: Customer[]): Customer | undefined {
+  // التعرف على العميل من الرسالة مع تحديد دقة المطابقة (هاتف مقابل اسم فقط)
+  static identifyCustomerDetailed(sms: SmsMessage, customers: Customer[]): { customer: Customer; matchedBy: 'phone' | 'email' | 'name' } | undefined {
     const candidates: string[] = [];
     const senderDigits = normalizePhoneDigits(sms.sender);
     if (senderDigits.length >= 10) candidates.push(senderDigits);
@@ -3511,18 +3511,31 @@ export class DataService {
           .map((p) => normalizePhoneDigits(p as string))
           .some((cp) => cp === cand || (cp.length >= 9 && cand.length >= 9 && tail(cp) === tail(cand)))
       );
-      if (found) return found;
+      if (found) return { customer: found, matchedBy: 'phone' };
     }
 
-    // الاسم داخل المتن — نفضل الاسم الأطول (الاسم الكامل قبل النيك نيم)
+    if (email) {
+      const foundByEmail = customers.find(c => c.whatsappNumber.includes(email[0]) || (c.notes && c.notes.includes(email[0])));
+      if (foundByEmail) return { customer: foundByEmail, matchedBy: 'email' };
+    }
+
+    // الاسم داخل المتن — نفضل الاسم الأطول (الاسم الكامل قبل النيك نيم)، ولا نقل عن 4 أحرف
     const byName = customers
       .filter((c) =>
         [c.fullName, c.nickname]
-          .filter((n): n is string => !!n && n.trim().length >= 3)
+          .filter((n): n is string => !!n && n.trim().length >= 4)
           .some((n) => sms.rawBody.includes(n))
       )
       .sort((a, b) => b.fullName.length - a.fullName.length);
-    return byName[0];
+    if (byName[0]) {
+      return { customer: byName[0], matchedBy: 'name' };
+    }
+    return undefined;
+  }
+
+  // التعرف على العميل من الرسالة: متوافق مع الاستخدامات العامة
+  static identifyCustomerFromSms(sms: SmsMessage, customers: Customer[]): Customer | undefined {
+    return this.identifyCustomerDetailed(sms, customers)?.customer;
   }
 
   // طلب العميل المفتوح بنفس عملة الرسالة — المستحق اليوم أولاً ثم الأقدم موعداً
@@ -3551,9 +3564,23 @@ export class DataService {
     }
 
     const currency = providerCurrency(sms.parsedProvider);
-    const customer = this.identifyCustomerFromSms(sms, this.getCustomers());
-    if (!customer) {
+    const idResult = this.identifyCustomerDetailed(sms, this.getCustomers());
+    if (!idResult) {
       return { smsId, matched: false, reason: 'customer_not_found', amount: sms.parsedAmount };
+    }
+    const { customer, matchedBy } = idResult;
+
+    // حماية مالية مشددة: إذا كانت المطابقة بالاسم فقط دون هاتف أو مرجع، نمنع المطابقة التلقائية
+    // ونتركها للمحاسب للمراجعة والتأكيد اليدوي منعاً لخلط الدفعات بين الأسماء المتشابهة
+    if (matchedBy === 'name') {
+      return {
+        smsId,
+        matched: false,
+        reason: 'name_only_requires_manual_confirmation',
+        customerName: customer.fullName,
+        amount: sms.parsedAmount,
+        currency,
+      };
     }
 
     const order = this.findOpenOrderForCustomer(customer.id, currency);
