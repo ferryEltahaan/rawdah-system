@@ -162,7 +162,7 @@ export const CustomerSelfRegister: React.FC = () => {
     : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#064E3B] via-[#043d2f] to-[#02231b] flex flex-col md:flex-row relative overflow-hidden font-cairo" dir="rtl">
+    <div className="min-h-screen bg-gradient-to-br from-[#064E3B] via-[#043d2f] to-[#02231b] flex flex-col md:flex-row relative overflow-x-hidden font-cairo" dir="rtl">
       
       {/* خلفيات وزخارف إسلامية موحدة لكامل الصفحة */}
       <div className="absolute -top-40 -right-40 w-[500px] h-[500px] bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -170,7 +170,7 @@ export const CustomerSelfRegister: React.FC = () => {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-400/[0.03] via-transparent to-transparent pointer-events-none"></div>
 
       {/* ── الجانب الأيمن: بطاقة تسجيل طلب المعتمر ── */}
-      <div className="w-full md:w-1/2 flex items-center justify-center p-6 md:p-10 lg:p-14 relative z-10 order-2 md:order-1 overflow-y-auto max-h-screen">
+      <div className="w-full md:w-1/2 flex items-center justify-center p-6 md:p-10 lg:p-14 relative z-10 order-2 md:order-1">
         
         <div className="w-full max-w-lg bg-white/95 backdrop-blur-xl border border-white/40 rounded-3xl p-7 md:p-10 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.4)] space-y-6 my-auto">
           
