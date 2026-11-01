@@ -126,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 py-3 shadow-sm">
+      <header className="sticky top-0 z-40 bg-[#064E3B] text-white border-b-2 border-[#D97706]/60 px-4 md:px-6 py-3 shadow-lg shadow-emerald-950/20">
         <div className="flex items-center justify-between gap-3 md:gap-4">
           
           {/* Left / Start: Mobile Menu Toggle & Logo & Brand */}
@@ -135,39 +135,39 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={onToggleMobileMenu}
-                className="md:hidden p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 transition-colors"
+                className="md:hidden p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white transition-colors"
                 aria-label="القائمة الجانبية"
               >
-                {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                {isMobileMenuOpen ? <X className="w-5 h-5 text-amber-300" /> : <Menu className="w-5 h-5 text-amber-300" />}
               </button>
             )}
 
-            <div className="w-9 h-9 md:w-10 md:h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
-              <div className="w-full h-full bg-emerald-900/90 rounded-[14px] flex items-center justify-center overflow-hidden">
+            <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl bg-gradient-to-tr from-amber-400 via-amber-500 to-emerald-400 p-0.5 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+              <div className="w-full h-full bg-[#064E3B] rounded-[14px] flex items-center justify-center overflow-hidden">
                 {companySettings.logoUrl ? (
                   <img src={companySettings.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
                 ) : (
-                  <Building2 className="w-4 h-4 md:w-5 md:h-5 text-emerald-100" />
+                  <Building2 className="w-5 h-5 text-amber-300" />
                 )}
               </div>
             </div>
             <div>
-              <h1 className="text-sm md:text-base font-black text-slate-900 tracking-tight leading-tight">
-                {companySettings.companyNameAr || 'مؤسسة حجز تصاريح الروضة'}
+              <h1 className="text-sm md:text-base font-black text-white tracking-tight leading-tight flex items-center gap-2">
+                <span>{companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}</span>
               </h1>
-              <p className="text-[10px] md:text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                <span className="hidden xs:inline">نظام حجز الروضة</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span className="text-emerald-700 font-semibold text-[10px]">مباشر</span>
+              <p className="text-[10px] md:text-xs text-emerald-200/90 font-medium flex items-center gap-1.5">
+                <span className="hidden xs:inline">نظام التشغيل وإدارة التصاريح</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span className="text-amber-300 font-bold text-[10px]">مباشر سحابي</span>
               </p>
             </div>
           </div>
 
           {/* Center: Live Asia/Riyadh Clock */}
-          <div className="hidden lg:flex items-center gap-2.5 bg-slate-50 border border-slate-200 px-4 py-1.5 rounded-full text-xs font-mono text-emerald-800 shadow-sm">
-            <Clock className="w-4 h-4 text-emerald-600 animate-spin" style={{ animationDuration: '10s' }} />
-            <span className="text-slate-500 font-sans font-medium">توقيت مكة والرياض:</span>
-            <span className="font-bold text-slate-800">{riyadhTime}</span>
+          <div className="hidden lg:flex items-center gap-2.5 bg-emerald-900/60 border border-emerald-700/60 px-4 py-1.5 rounded-full text-xs font-mono text-emerald-100 shadow-inner">
+            <Clock className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '10s' }} />
+            <span className="text-emerald-200/80 font-sans font-medium">توقيت مكة والرياض:</span>
+            <span className="font-bold text-amber-300">{riyadhTime}</span>
           </div>
 
           {/* Right / End: Cloud Status, Actions & User Switcher */}
@@ -179,28 +179,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setShowCloudModal(true)}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
                   isCloudActive
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                    : 'bg-slate-50 border-slate-200 hover:border-amber-400 text-slate-600 hover:text-amber-700'
+                    ? 'bg-emerald-900/80 border-emerald-500/50 text-emerald-100 hover:bg-emerald-800'
+                    : 'bg-emerald-950/80 border-amber-500/40 text-amber-200 hover:border-amber-400'
                 }`}
                 title="إعدادات الربط السحابي مع Supabase"
               >
-                <Cloud className={`w-4 h-4 ${isCloudActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <Cloud className={`w-4 h-4 ${isCloudActive ? 'text-amber-300' : 'text-slate-300'}`} />
                 <span className="hidden sm:inline">
                   {isCloudActive ? 'السحابة متصلة' : 'الربط السحابي'}
                 </span>
                 {isCloudActive && lastSync && (
-                  <span className="hidden md:inline text-[10px] font-bold text-emerald-600 bg-emerald-100/70 px-1.5 py-0.5 rounded-md font-mono" title="آخر مزامنة بيانات مع السحابة">
+                  <span className="hidden md:inline text-[10px] font-bold text-amber-300 bg-emerald-950/80 px-1.5 py-0.5 rounded-md font-mono" title="آخر مزامنة بيانات مع السحابة">
                     {new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(lastSync))}
                   </span>
                 )}
-                <span className={`w-2 h-2 rounded-full ${isCloudActive ? 'bg-emerald-500 animate-ping' : 'bg-amber-400'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${isCloudActive ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`}></span>
               </button>
             )}
 
             {/* SMS Notification Bell */}
             <button
               onClick={onNavigateToSms}
-              className="relative p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-amber-600 transition-all shadow-sm"
+              className="relative p-2.5 rounded-xl bg-emerald-900/70 hover:bg-emerald-800 border border-emerald-700/60 text-emerald-100 hover:text-amber-300 transition-all shadow-sm"
               title="رسائل الـ SMS الواردة"
             >
               <Bell className="w-5 h-5" />
@@ -212,7 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             {/* Current User Display — النقر يفتح الملف الشخصي */}
-            <div className="flex items-center gap-2.5 p-1.5 pr-3 rounded-xl bg-slate-50 border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2.5 p-1.5 pr-3 rounded-xl bg-emerald-900/80 border border-emerald-700/60 text-white shadow-sm">
               <button
                 type="button"
                 onClick={() => setShowProfileModal(true)}
@@ -230,13 +230,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </span>
                 <span className="text-right hidden sm:block">
-                  <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">{currentUser.fullName}</span>
-                  <span className="block text-[10px] text-slate-500">{getRoleBadge(currentUser.role)}</span>
+                  <span className="block text-xs font-bold text-white group-hover:text-amber-300 transition-colors">{currentUser.fullName}</span>
+                  <span className="block text-[10px] text-emerald-200/90">{getRoleBadge(currentUser.role)}</span>
                 </span>
               </button>
               <button
                 onClick={onLogout}
-                className="p-2 mr-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                className="p-2 mr-1 rounded-lg text-emerald-200 hover:text-white hover:bg-rose-600/80 transition-colors"
                 title="تسجيل الخروج من النظام"
               >
                 <LogOut className="w-4 h-4" />

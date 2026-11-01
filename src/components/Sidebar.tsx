@@ -205,12 +205,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => handleSelect(item.id)}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all group ${
                 isActive
-                  ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-gradient-to-r from-[#064E3B] to-[#047857] text-white font-bold shadow-md shadow-emerald-950/20 border-r-4 border-amber-400'
+                  : 'text-slate-600 hover:bg-emerald-50/60 hover:text-[#064E3B]'
               }`}
             >
               <div className="flex items-center gap-3">
-                <span className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-emerald-600'} transition-colors`}>
+                <span className={`${isActive ? 'text-amber-300' : 'text-slate-400 group-hover:text-[#064E3B]'} transition-colors`}>
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
