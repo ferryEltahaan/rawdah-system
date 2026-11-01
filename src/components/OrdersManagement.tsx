@@ -1506,7 +1506,7 @@ ${accountsList}`);
 
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => handleOpenEditModal(order)}
+                        onClick={() => handleOpenEditOrder(order)}
                         className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100"
                         title="تعديل بيانات الطلب"
                       >
@@ -1514,7 +1514,7 @@ ${accountsList}`);
                       </button>
                       {canDelete && (
                         <button
-                          onClick={() => handleOpenDeleteModal(order)}
+                          onClick={() => setDeletingOrder(order)}
                           className="p-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50"
                           title="حذف الطلب"
                         >
