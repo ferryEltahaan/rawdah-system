@@ -126,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#064E3B] text-white border-b-2 border-[#D97706]/60 px-4 md:px-6 py-3 shadow-lg shadow-emerald-950/20">
+      <header className="sticky top-0 z-40 bg-[#064E3B] text-white border-b-2 border-[#D97706]/60 px-2.5 sm:px-4 md:px-6 py-2.5 sm:py-3 shadow-lg shadow-emerald-950/20">
         <div className="flex items-center justify-between gap-3 md:gap-4">
           
           {/* Left / Start: Mobile Menu Toggle & Logo & Brand */}
@@ -197,10 +197,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* SMS Notification Bell */}
+            {/* SMS Notification Bell (hidden on mobile as it exists on the bottom navigation bar) */}
             <button
               onClick={onNavigateToSms}
-              className="relative p-2.5 rounded-xl bg-emerald-900/70 hover:bg-emerald-800 border border-emerald-700/60 text-emerald-100 hover:text-amber-300 transition-all shadow-sm"
+              className="hidden sm:flex relative p-2.5 rounded-xl bg-emerald-900/70 hover:bg-emerald-800 border border-emerald-700/60 text-emerald-100 hover:text-amber-300 transition-all shadow-sm"
               title="رسائل الـ SMS الواردة"
             >
               <Bell className="w-5 h-5" />
@@ -212,21 +212,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             {/* Current User Display — النقر يفتح الملف الشخصي */}
-            <div className="flex items-center gap-2.5 p-1.5 pr-3 rounded-xl bg-emerald-900/80 border border-emerald-700/60 text-white shadow-sm">
+            <div className="flex items-center gap-1 sm:gap-2.5 p-1 sm:p-1.5 sm:pr-3 rounded-xl bg-emerald-900/80 border border-emerald-700/60 text-white shadow-sm shrink-0">
               <button
                 type="button"
                 onClick={() => setShowProfileModal(true)}
-                className="flex items-center gap-2.5 group"
+                className="flex items-center gap-2 group"
                 title="ملفي الشخصي — تعديل بياناتي وصورتي وكلمة مروري"
               >
                 <span className="relative inline-block shrink-0">
                   <img
                     src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                     alt={currentUser.fullName}
-                    className="w-8 h-8 rounded-lg object-cover border border-emerald-500/30"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover border border-emerald-500/30"
                   />
-                  <span className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-emerald-600 border-2 border-white flex items-center justify-center shadow-sm">
-                    <Pencil className="w-2 h-2 text-white" />
+                  <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-emerald-600 border-2 border-white flex items-center justify-center shadow-sm">
+                    <Pencil className="w-1.5 h-1.5 sm:w-2 sm:h-2 text-white" />
                   </span>
                 </span>
                 <span className="text-right hidden sm:block">
@@ -236,7 +236,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
               <button
                 onClick={onLogout}
-                className="p-2 mr-1 rounded-lg text-emerald-200 hover:text-white hover:bg-rose-600/80 transition-colors"
+                className="p-1.5 sm:p-2 rounded-lg text-emerald-200 hover:text-white hover:bg-rose-600/80 transition-colors"
                 title="تسجيل الخروج من النظام"
               >
                 <LogOut className="w-4 h-4" />
