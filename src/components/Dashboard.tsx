@@ -19,6 +19,18 @@ import { currencySymbol, getOrderCurrency } from '../utils/currency';
 import { UserProfile, SalesOrder } from '../types';
 import { useToast } from './Toast';
 
+const ACTION_LABELS: Record<string, string> = {
+  CREATE_ORDER: 'إنشاء طلب حجز جديد',
+  UPDATE_SETTINGS: 'تعديل إعدادات المؤسسة',
+  DELETE_ORDER: 'حذف طلب حجز',
+  ASSIGN_PERMIT: 'تسكين وتخصيص تصريح',
+  UPLOAD_PERMITS: 'رفع تصاريح جديدة للمخزون',
+  RETURN_PERMIT: 'إرجاع تصريح للمخزون',
+  LOGIN: 'تسجيل دخول للنظام',
+  UPDATE_PERMISSIONS: 'تعديل صلاحيات موظف',
+  EXPORT_EXCEL: 'تصدير بيانات إكسيل',
+};
+
 interface DashboardProps {
   currentUser: UserProfile;
   onNavigate: (tab: any) => void;
@@ -554,7 +566,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, onNavigate })
               <div key={log.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
                 <div>
                   <span className="font-bold text-slate-800">{log.userName}: </span>
-                  <span className="text-slate-600 font-mono text-[11px]">{log.actionType}</span>
+                  <span className="text-emerald-800 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-md text-[10px] font-bold">{ACTION_LABELS[log.actionType] || log.actionType}</span>
                 </div>
                 <span className="text-[10px] text-slate-500 font-mono">
                   {new Date(log.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}

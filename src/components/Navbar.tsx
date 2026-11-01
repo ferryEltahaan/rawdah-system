@@ -151,12 +151,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </div>
             </div>
-            <div>
-              <h1 className="text-sm md:text-base font-black text-white tracking-tight leading-tight flex items-center gap-2">
-                <span className="truncate max-w-[160px] xs:max-w-[220px] sm:max-w-none">{companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}</span>
+            <div className="min-w-0">
+              <h1 className="text-xs sm:text-sm md:text-base font-black text-white tracking-tight leading-snug">
+                <span>{companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}</span>
               </h1>
-              <p className="text-[10px] md:text-xs text-emerald-200/90 font-medium flex items-center gap-1.5">
-                <span className="hidden xs:inline">نظام التشغيل وإدارة التصاريح</span>
+              <p className="text-[10px] md:text-xs text-emerald-200/90 font-medium flex items-center gap-1.5 mt-0.5">
+                <span className="hidden sm:inline">نظام التشغيل وإدارة التصاريح</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                 <span className="text-amber-300 font-bold text-[10px]">مباشر سحابي</span>
               </p>
