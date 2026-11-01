@@ -350,14 +350,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <div className="pt-2 flex flex-col items-center justify-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setShowCloudModal(true)}
-                className="text-xs text-slate-400 hover:text-[#064E3B] flex items-center gap-1 transition-colors py-1 px-2.5 rounded-lg"
-              >
-                <CloudCog className="w-3.5 h-3.5" />
-                <span>إعداد الاتصال بالسحابة (Supabase Cloud Setup)</span>
-              </button>
-              <button
-                type="button"
                 onClick={async () => {
                   const res = await DataService.cleanupAndFreeStorage();
                   alert(`تم تفريغ مساحة المتصفح بنجاح (تم توفير ${res.freedKb} ك.ب).`);
@@ -375,19 +367,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       </div>
 
       {/* ── الجانب الأيسر (Desktop): واجهة الشعار والهوية الموحدة بانسيابية تامة ── */}
-      <div className="w-full md:w-1/2 min-h-[420px] md:min-h-screen relative flex flex-col justify-between items-center text-center p-8 md:p-14 overflow-hidden order-1 md:order-2">
-        
-        {/* الترويسة العلوية لجانب الهوية */}
-        <div className="relative z-10 w-full flex items-center justify-between text-xs">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/60 border border-amber-400/40 text-amber-300 font-bold tracking-wider shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-            <span>بوابة التشغيل الميداني المعتمدة</span>
-          </div>
-          <span className="text-emerald-200/80 font-mono text-[11px]">Asia/Riyadh +03:00</span>
-        </div>
+      <div className="w-full md:w-1/2 min-h-[420px] md:min-h-screen relative flex flex-col justify-center items-center text-center p-8 md:p-14 overflow-hidden order-1 md:order-2">
 
         {/* قلب الهوية: الشعار واسم المؤسسة */}
-        <div className="relative z-10 my-auto py-8 md:py-0 max-w-lg mx-auto space-y-8 flex flex-col items-center">
+        <div className="relative z-10 max-w-lg mx-auto space-y-8 flex flex-col items-center">
           
           {/* إطار الشعار الفخم والمذهب */}
           <div className="relative group transition-transform hover:scale-105 duration-300">
@@ -432,12 +415,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
           </div>
 
-        </div>
-
-        {/* التذييل لجانب الهوية */}
-        <div className="relative z-10 w-full pt-4 text-[11px] text-emerald-200/70 border-t border-emerald-800/60 flex items-center justify-between">
-          <span>الروضة الشريفة • المسجد النبوي</span>
-          <span>الإصدار الميداني المعتمد v2.6</span>
         </div>
 
       </div>
