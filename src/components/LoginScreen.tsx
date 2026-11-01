@@ -398,18 +398,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
           </div>
 
-          {/* اسم المؤسسة والوصف (متباعد ومريح وواضح بالكامل) */}
-          <div className="space-y-4 text-center px-4">
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-normal bg-gradient-to-b from-[#FFFFFF] via-[#FDE68A] to-[#D97706] bg-clip-text text-transparent drop-shadow-[0_4px_14px_rgba(0,0,0,0.6)]">
+          {/* اسم المؤسسة والوصف (متباعد ومريح وواضح بالكامل دون أي قص) */}
+          <div className="space-y-4 text-center px-4 w-full">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-[1.3] pb-2 bg-gradient-to-b from-[#FFFFFF] via-[#FDE68A] to-[#D97706] bg-clip-text text-transparent drop-shadow-[0_4px_14px_rgba(0,0,0,0.6)]">
               {companySettings.companyNameAr || 'مناسك الخير لتصاريح الروضة الشريفة'}
             </h1>
             
             {/* تم إنزال الوصف لأسفل مع مسافة كافية لكي يظهر الاسم بالكامل دون تداخل */}
-            <div className="pt-2">
+            <div className="pt-3">
               <p className="text-sm md:text-base text-amber-200/90 font-bold tracking-wider max-w-md mx-auto leading-relaxed">
                 {companySettings.companyNameEn || 'Rawdah Permits Enterprise'}
               </p>
-              <p className="text-xs text-emerald-100/70 font-medium tracking-wide mt-1">
+              <p className="text-xs text-emerald-100/70 font-medium tracking-wide mt-1.5">
                 بوابة الدخول الذكية والتشغيل الميداني المعتمد
               </p>
             </div>
